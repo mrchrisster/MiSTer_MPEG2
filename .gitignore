@@ -1,0 +1,9 @@
+nul
+.claude/
+output_files/
+Template_MiSTer-master/
+CDi_MiSTer-main/
+mpeg2fpga-orig/
+incremental_db/
+*.ppm
+*.lxt
