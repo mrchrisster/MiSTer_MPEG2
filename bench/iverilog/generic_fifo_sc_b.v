@@ -196,7 +196,7 @@ generic_dpram  #(aw,dw) u0(
 	.rce(		1'b1		),
 	.oe(		1'b1		),
 	.raddr(		rp[aw-1:0]	),
-	.do(		dout		),
+	.q_out(		dout		),
 	.wclk(		clk		),
 	.wrst(		!rst		),
 	.wce(		1'b1		),

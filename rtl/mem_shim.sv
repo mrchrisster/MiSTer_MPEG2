@@ -1,23 +1,3 @@
-// mem_shim.sv
-//
-// Bridge between mpeg2fpga's 64-bit memory interface and MiSTer's 16-bit SDRAM.
-//
-// The mpeg2video core presents commands via a dual-clock FIFO:
-//   - mem_req_rd_cmd/addr/dta are the FIFO data output (active when mem_req_rd_valid)
-//   - mem_req_rd_en is the FIFO read-enable: assert HIGH continuously whenever
-//     this shim is ready to accept commands. The FIFO pops one entry each cycle
-//     that both mem_req_rd_en and mem_req_rd_valid are high.
-//   - mem_res_wr_dta/en feed the response FIFO (read data back to the core).
-//   - mem_res_wr_almost_full is backpressure from the response FIFO.
-//
-// Each 64-bit word is split into 4 sequential 16-bit SDRAM accesses.
-//
-// Address mapping:
-//   Core address is a 22-bit index into 64-bit (8-byte) words.
-//   SDRAM byte address = core_addr * 8 = {core_addr, 3'b000}
-//   Each 16-bit SDRAM word is 2 bytes, so 4 accesses at offsets +0, +2, +4, +6.
-//   SDRAM controller uses byte addressing with ADDR[24:0].
-
 module mem_shim (
     input             clk,
     input             rst_n,
@@ -26,7 +6,7 @@ module mem_shim (
     input       [1:0] mem_req_rd_cmd,
     input      [21:0] mem_req_rd_addr,
     input      [63:0] mem_req_rd_dta,
-    output            mem_req_rd_en,
+    output reg        mem_req_rd_en,
     input             mem_req_rd_valid,
 
     // MPEG2 Core memory response FIFO (write side) — clocked on clk (mem_clk)
@@ -34,14 +14,23 @@ module mem_shim (
     output reg        mem_res_wr_en,
     input             mem_res_wr_almost_full,
 
-    // SDRAM Controller Interface (16-bit)
-    output reg [24:0] sdram_addr,
-    output reg        sdram_rd,
-    output reg        sdram_wr,
-    output reg [15:0] sdram_din,
-    input      [15:0] sdram_dout,
-    input             sdram_ack,
-    input             sdram_busy
+    // DDR3 Controller Interface (Avalon-MM 64-bit)
+    output     [28:0] ddr3_addr,
+    output      [7:0] ddr3_burstcnt,
+    output            ddr3_read,
+    output            ddr3_write,
+    output     [63:0] ddr3_writedata,
+    output      [7:0] ddr3_byteenable,
+    input      [63:0] ddr3_readdata,
+    input             ddr3_readdatavalid,
+    input             ddr3_waitrequest,
+
+    // Debug outputs
+    output     [3:0]  debug_state,
+    output            debug_sdram_busy,
+    output            debug_sdram_ack,
+    output    [15:0]  debug_rd_count,
+    output    [15:0]  debug_wr_count
 );
 
     // Command encoding (from mem_codes.v)
@@ -50,191 +39,115 @@ module mem_shim (
     localparam CMD_READ    = 2'd2;
     localparam CMD_WRITE   = 2'd3;
 
-    // States
-    localparam S_IDLE    = 4'd0;
-    localparam S_READ_0  = 4'd1;
-    localparam S_READ_1  = 4'd2;
-    localparam S_READ_2  = 4'd3;
-    localparam S_READ_3  = 4'd4;
-    localparam S_WRITE_0 = 4'd5;
-    localparam S_WRITE_1 = 4'd6;
-    localparam S_WRITE_2 = 4'd7;
-    localparam S_WRITE_3 = 4'd8;
-    localparam S_RESP    = 4'd9;
+    // =========================================================================
+    // DDR3 Avalon-MM outputs
+    // =========================================================================
+    reg        ram_read;
+    reg        ram_write;
+    reg [28:0] ram_address;
+    reg [63:0] ram_writedata;
 
-    reg [3:0]  state;
-    reg [63:0] read_buffer;
-    reg [63:0] write_buffer;
-    reg [24:0] base_addr;
-    reg        req_issued;  // tracks whether we've issued RD/WR for current sub-word
+    assign ddr3_read       = ram_read;
+    assign ddr3_write      = ram_write;
+    assign ddr3_addr       = ram_address;
+    assign ddr3_writedata  = ram_writedata;
+    assign ddr3_burstcnt   = 8'd1;
+    assign ddr3_byteenable = 8'hFF;
 
     // =========================================================================
-    // mem_req_rd_en: continuous flow-control signal
+    // FSM
     // =========================================================================
-    // Assert when we are idle and can accept a new command.
-    // This matches the original mem_ctl.v behavior:
-    //   mem_req_rd_en <= ~mem_res_wr_almost_full
-    // but we also gate on being in IDLE state since we need multiple cycles
-    // to process each command.
-    assign mem_req_rd_en = (state == S_IDLE) && !mem_res_wr_almost_full;
+    // state=0 (IDLE): Accept new FIFO commands
+    // state=1 (WAIT): Wait for transaction acceptance (!waitrequest)
 
-    // =========================================================================
-    // Main state machine
-    // =========================================================================
-    // Protocol with SDRAM controller:
-    //   - Pulse sdram_rd or sdram_wr for exactly ONE cycle when !sdram_busy
-    //   - Wait for sdram_ack (one-cycle pulse) indicating completion
-    //   - For reads, capture sdram_dout on the cycle sdram_ack is asserted
-    //
-    always @(posedge clk or negedge rst_n) begin
+    reg state;
+
+    always @(posedge clk) begin
         if (!rst_n) begin
-            state        <= S_IDLE;
-            mem_res_wr_en <= 1'b0;
-            mem_res_wr_dta <= 64'd0;
-            sdram_rd     <= 1'b0;
-            sdram_wr     <= 1'b0;
-            sdram_addr   <= 25'd0;
-            sdram_din    <= 16'd0;
-            read_buffer  <= 64'd0;
-            write_buffer <= 64'd0;
-            base_addr    <= 25'd0;
-            req_issued   <= 1'b0;
-        end else begin
-            // Defaults: deassert single-cycle strobes
-            mem_res_wr_en <= 1'b0;
-            sdram_rd      <= 1'b0;
-            sdram_wr      <= 1'b0;
+            state         <= 0;
+            ram_read      <= 0;
+            ram_write     <= 0;
+            ram_address   <= 0;
+            ram_writedata <= 0;
+            mem_req_rd_en <= 0;
+            mem_res_wr_en <= 0;
+            mem_res_wr_dta <= 0;
+        end
+        else begin
+            // -----------------------------------------------------------------
+            // Response Path (Always Active)
+            // -----------------------------------------------------------------
+            mem_res_wr_en <= ddr3_readdatavalid;
+            if (ddr3_readdatavalid)
+                mem_res_wr_dta <= ddr3_readdata;
 
-            case (state)
-                // ---------------------------------------------------------
-                // IDLE: accept command when FIFO has valid data
-                // ---------------------------------------------------------
-                S_IDLE: begin
-                    req_issued <= 1'b0;
-                    if (mem_req_rd_en && mem_req_rd_valid) begin
-                        case (mem_req_rd_cmd)
-                            CMD_READ: begin
-                                base_addr  <= {mem_req_rd_addr, 3'b000};
-                                sdram_addr <= {mem_req_rd_addr, 3'b000};
-                                state      <= S_READ_0;
-                                req_issued <= 1'b0;
-                            end
-                            CMD_WRITE: begin
-                                base_addr    <= {mem_req_rd_addr, 3'b000};
-                                write_buffer <= mem_req_rd_dta;
-                                sdram_addr   <= {mem_req_rd_addr, 3'b000};
-                                sdram_din    <= mem_req_rd_dta[63:48];
-                                state        <= S_WRITE_0;
-                                req_issued   <= 1'b0;
-                            end
-                            default: ;
-                        endcase
-                    end
+            // -----------------------------------------------------------------
+            // Command Path
+            // -----------------------------------------------------------------
+            if (!state) begin
+                // IDLE State
+                // Default: Keep popping if response FIFO has space
+                mem_req_rd_en <= !mem_res_wr_almost_full;
+
+                if (mem_req_rd_valid && !mem_res_wr_almost_full) begin
+                    case (mem_req_rd_cmd)
+                        CMD_WRITE: begin
+                            ram_write     <= 1;
+                            ram_address   <= {4'b0011, mem_req_rd_addr, 3'b000};
+                            ram_writedata <= mem_req_rd_dta;
+                            state         <= 1;     // Go to WAIT
+                            mem_req_rd_en <= 0;     // Stop popping
+                        end
+                        CMD_READ: begin
+                            ram_read      <= 1;
+                            ram_address   <= {4'b0011, mem_req_rd_addr, 3'b000};
+                            state         <= 1;     // Go to WAIT
+                            mem_req_rd_en <= 0;     // Stop popping
+                        end
+                        // Ignore NOOP/REFRESH, keep popping
+                        default: ;
+                    endcase
                 end
-
-                // ---------------------------------------------------------
-                // READ: 4 sequential 16-bit reads -> 64-bit word
-                // ---------------------------------------------------------
-                S_READ_0: begin
-                    if (sdram_ack) begin
-                        read_buffer[63:48] <= sdram_dout;
-                        sdram_addr <= base_addr + 25'd2;
-                        state      <= S_READ_1;
-                        req_issued <= 1'b0;
-                    end else if (!req_issued && !sdram_busy) begin
-                        sdram_rd   <= 1'b1;
-                        req_issued <= 1'b1;
-                    end
+            end
+            else begin
+                // WAIT State
+                if (!ddr3_waitrequest) begin
+                    // Transaction Accepted
+                    ram_read  <= 0;
+                    ram_write <= 0;
+                    state     <= 0; // Back to IDLE
+                    
+                    // Resume flow control (look ahead for next cycle)
+                    mem_req_rd_en <= !mem_res_wr_almost_full;
                 end
-
-                S_READ_1: begin
-                    if (sdram_ack) begin
-                        read_buffer[47:32] <= sdram_dout;
-                        sdram_addr <= base_addr + 25'd4;
-                        state      <= S_READ_2;
-                        req_issued <= 1'b0;
-                    end else if (!req_issued && !sdram_busy) begin
-                        sdram_rd   <= 1'b1;
-                        req_issued <= 1'b1;
-                    end
-                end
-
-                S_READ_2: begin
-                    if (sdram_ack) begin
-                        read_buffer[31:16] <= sdram_dout;
-                        sdram_addr <= base_addr + 25'd6;
-                        state      <= S_READ_3;
-                        req_issued <= 1'b0;
-                    end else if (!req_issued && !sdram_busy) begin
-                        sdram_rd   <= 1'b1;
-                        req_issued <= 1'b1;
-                    end
-                end
-
-                S_READ_3: begin
-                    if (sdram_ack) begin
-                        mem_res_wr_dta <= {read_buffer[63:16], sdram_dout};
-                        mem_res_wr_en  <= 1'b1;
-                        state          <= S_IDLE;
-                        req_issued     <= 1'b0;
-                    end else if (!req_issued && !sdram_busy) begin
-                        sdram_rd   <= 1'b1;
-                        req_issued <= 1'b1;
-                    end
-                end
-
-                // ---------------------------------------------------------
-                // WRITE: 4 sequential 16-bit writes from 64-bit word
-                // ---------------------------------------------------------
-                S_WRITE_0: begin
-                    if (sdram_ack) begin
-                        sdram_addr <= base_addr + 25'd2;
-                        sdram_din  <= write_buffer[47:32];
-                        state      <= S_WRITE_1;
-                        req_issued <= 1'b0;
-                    end else if (!req_issued && !sdram_busy) begin
-                        sdram_wr   <= 1'b1;
-                        req_issued <= 1'b1;
-                    end
-                end
-
-                S_WRITE_1: begin
-                    if (sdram_ack) begin
-                        sdram_addr <= base_addr + 25'd4;
-                        sdram_din  <= write_buffer[31:16];
-                        state      <= S_WRITE_2;
-                        req_issued <= 1'b0;
-                    end else if (!req_issued && !sdram_busy) begin
-                        sdram_wr   <= 1'b1;
-                        req_issued <= 1'b1;
-                    end
-                end
-
-                S_WRITE_2: begin
-                    if (sdram_ack) begin
-                        sdram_addr <= base_addr + 25'd6;
-                        sdram_din  <= write_buffer[15:0];
-                        state      <= S_WRITE_3;
-                        req_issued <= 1'b0;
-                    end else if (!req_issued && !sdram_busy) begin
-                        sdram_wr   <= 1'b1;
-                        req_issued <= 1'b1;
-                    end
-                end
-
-                S_WRITE_3: begin
-                    if (sdram_ack) begin
-                        state      <= S_IDLE;
-                        req_issued <= 1'b0;
-                    end else if (!req_issued && !sdram_busy) begin
-                        sdram_wr   <= 1'b1;
-                        req_issued <= 1'b1;
-                    end
-                end
-
-                default: state <= S_IDLE;
-            endcase
+                // Else: Stay in WAIT, holding ram_read/write/addr/data stable
+            end
         end
     end
+
+    // =========================================================================
+    // Debug
+    // =========================================================================
+    reg [15:0] rd_count;
+    reg [15:0] wr_count;
+
+    wire rd_accepted = ddr3_read  && !ddr3_waitrequest;
+    wire wr_accepted = ddr3_write && !ddr3_waitrequest;
+
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            rd_count <= 0;
+            wr_count <= 0;
+        end else begin
+            if (rd_accepted) rd_count <= rd_count + 1'd1;
+            if (wr_accepted) wr_count <= wr_count + 1'd1;
+        end
+    end
+
+    assign debug_state      = {3'b000, state};
+    assign debug_sdram_busy = ddr3_waitrequest;
+    assign debug_sdram_ack  = rd_accepted | wr_accepted;
+    assign debug_rd_count   = rd_count;
+    assign debug_wr_count   = wr_count;
 
 endmodule

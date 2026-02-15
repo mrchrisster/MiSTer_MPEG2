@@ -1,0 +1,300 @@
+$date
+	Fri Feb 13 11:16:54 2026
+$end
+$version
+	Icarus Verilog
+$end
+$timescale
+	1ps
+$end
+$scope module tb_mem_shim $end
+$var wire 1 ! mem_res_wr_en $end
+$var wire 64 " mem_res_wr_dta [63:0] $end
+$var wire 1 # mem_req_rd_en $end
+$var wire 64 $ ddr3_writedata [63:0] $end
+$var wire 1 % ddr3_write $end
+$var wire 1 & ddr3_read $end
+$var wire 8 ' ddr3_byteenable [7:0] $end
+$var wire 8 ( ddr3_burstcnt [7:0] $end
+$var wire 29 ) ddr3_addr [28:0] $end
+$var reg 1 * clk $end
+$var reg 64 + ddr3_readdata [63:0] $end
+$var reg 1 , ddr3_readdatavalid $end
+$var reg 1 - ddr3_waitrequest $end
+$var reg 22 . mem_req_rd_addr [21:0] $end
+$var reg 2 / mem_req_rd_cmd [1:0] $end
+$var reg 64 0 mem_req_rd_dta [63:0] $end
+$var reg 1 1 mem_req_rd_valid $end
+$var reg 1 2 mem_res_wr_almost_full $end
+$var reg 1 3 rst_n $end
+$scope module uut $end
+$var event 1 4 _ivl_18 $end
+$var wire 1 * clk $end
+$var wire 1 5 ddr3_acc $end
+$var wire 64 6 ddr3_readdata [63:0] $end
+$var wire 1 , ddr3_readdatavalid $end
+$var wire 1 - ddr3_waitrequest $end
+$var wire 16 7 debug_rd_count [15:0] $end
+$var wire 1 8 debug_sdram_ack $end
+$var wire 1 9 debug_sdram_busy $end
+$var wire 16 : debug_wr_count [15:0] $end
+$var wire 22 ; mem_req_rd_addr [21:0] $end
+$var wire 2 < mem_req_rd_cmd [1:0] $end
+$var wire 64 = mem_req_rd_dta [63:0] $end
+$var wire 1 1 mem_req_rd_valid $end
+$var wire 1 2 mem_res_wr_almost_full $end
+$var wire 1 3 rst_n $end
+$var wire 4 > debug_state [3:0] $end
+$var parameter 2 ? CMD_NOOP $end
+$var parameter 2 @ CMD_READ $end
+$var parameter 2 A CMD_REFRESH $end
+$var parameter 2 B CMD_WRITE $end
+$var parameter 2 C S_IDLE $end
+$var parameter 2 D S_READ_WAIT $end
+$var parameter 2 E S_WRITE_WAIT $end
+$var reg 29 F ddr3_addr [28:0] $end
+$var reg 8 G ddr3_burstcnt [7:0] $end
+$var reg 8 H ddr3_byteenable [7:0] $end
+$var reg 1 & ddr3_read $end
+$var reg 1 % ddr3_write $end
+$var reg 64 I ddr3_writedata [63:0] $end
+$var reg 29 J latched_addr [28:0] $end
+$var reg 64 K latched_data [63:0] $end
+$var reg 1 # mem_req_rd_en $end
+$var reg 64 L mem_res_wr_dta [63:0] $end
+$var reg 1 ! mem_res_wr_en $end
+$var reg 16 M rd_count [15:0] $end
+$var reg 2 N state [1:0] $end
+$var reg 16 O wr_count [15:0] $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+$comment Show the parameter values. $end
+$dumpall
+b1 E
+b10 D
+b0 C
+b11 B
+b1 A
+b10 @
+b0 ?
+$end
+#0
+$dumpvars
+b0 O
+b0 N
+b0 M
+b0 L
+b0 K
+b0 J
+b0 I
+bx H
+bx G
+b0 F
+b0 >
+b0 =
+b0 <
+b0 ;
+b0 :
+09
+08
+b0 7
+b0 6
+05
+14
+03
+02
+01
+b0 0
+b0 /
+b0 .
+0-
+0,
+b0 +
+0*
+b0 )
+bx (
+bx '
+0&
+0%
+b0 $
+0#
+b0 "
+0!
+$end
+#5000
+1*
+#10000
+0*
+#15000
+1*
+#20000
+0*
+13
+#25000
+1#
+1*
+#30000
+0*
+#35000
+1*
+#40000
+0*
+11
+b1101111010101101101111101110111111001010111111101011101010111110 0
+b1101111010101101101111101110111111001010111111101011101010111110 =
+b100100011010001010110 .
+b100100011010001010110 ;
+b11 /
+b11 <
+#45000
+18
+15
+b1101111010101101101111101110111111001010111111101011101010111110 $
+b1101111010101101101111101110111111001010111111101011101010111110 I
+b100100011010001010110000 )
+b100100011010001010110000 F
+1%
+1*
+#46000
+01
+#50000
+0*
+#55000
+08
+05
+0%
+b1 :
+b1 O
+1*
+#60000
+0*
+#65000
+1*
+#66000
+11
+b110111100110111101111 .
+b110111100110111101111 ;
+b10 /
+b10 <
+#70000
+0*
+#75000
+18
+15
+b110111100110111101111000 )
+b110111100110111101111000 F
+1&
+1*
+#76000
+01
+#80000
+0*
+#85000
+08
+05
+b1 7
+b1 M
+0&
+1*
+#90000
+0*
+#95000
+1*
+#96000
+1,
+b100100011010001010110011110001001101010111100110111101111 +
+b100100011010001010110011110001001101010111100110111101111 6
+#100000
+0*
+#105000
+b100100011010001010110011110001001101010111100110111101111 "
+b100100011010001010110011110001001101010111100110111101111 L
+1!
+1*
+#106000
+0,
+#110000
+0*
+#115000
+0!
+1*
+#120000
+0*
+#125000
+1*
+#126000
+11
+19
+1-
+#130000
+0*
+#135000
+0#
+b10 >
+b10 N
+b110111100110111101111000 J
+1&
+1*
+#140000
+0*
+#145000
+1#
+b0 >
+b0 N
+1&
+18
+15
+09
+0-
+1*
+#150000
+0*
+#155000
+08
+05
+0&
+b10 7
+b10 M
+01
+1*
+#160000
+0*
+#165000
+1*
+#170000
+0*
+#175000
+1*
+#180000
+0*
+#185000
+1*
+#190000
+0*
+#195000
+1*
+#200000
+0*
+#205000
+1*
+#210000
+0*
+#215000
+1*
+#220000
+0*
+#225000
+1*
+#230000
+0*
+#235000
+1*
+#240000
+0*
+#245000
+1*
+#250000
+0*
+#255000
+1*

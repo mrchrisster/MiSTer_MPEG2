@@ -56,7 +56,8 @@ module mpeg2video(clk, mem_clk, dot_clk,
              r, g, b, y, u, v, pixel_en, h_sync, v_sync, c_sync, h_pos, v_pos,                                                     // clocked with dot_clk
              mem_req_rd_cmd, mem_req_rd_addr, mem_req_rd_dta, mem_req_rd_en, mem_req_rd_valid,                                    // clocked with mem_clk
              mem_res_wr_dta, mem_res_wr_en, mem_res_wr_almost_full,                                                               // clocked with mem_clk
-             testpoint_dip, testpoint_dip_en, testpoint
+             testpoint_dip, testpoint_dip_en, testpoint,
+             init_cnt_out, sync_rst_out, vbw_almost_full_out
 	     );
 
   input            clk;                     // clock. Typically a multiple of 27 Mhz as MPEG2 timestamps have a 27 Mhz resolution.
@@ -82,6 +83,9 @@ module mpeg2video(clk, mem_clk, dot_clk,
   output           c_sync;                  // composite synchronisation
   output     [11:0]h_pos;                   // horizontal position; 0 = left
   output     [11:0]v_pos;                   // vertical position; 0 = top
+  output      [8:0]init_cnt_out;
+  output           sync_rst_out;
+  output           vbw_almost_full_out;
 
   /* register file access */
   input       [3:0]reg_addr;
@@ -539,6 +543,10 @@ module mpeg2video(clk, mem_clk, dot_clk,
   always @(posedge clk)
     if (~sync_rst) busy <= 1'b1;
     else busy <= vbw_wr_almost_full || ~sync_rst || (init_cnt != 9'h1ff);
+  
+  assign init_cnt_out = init_cnt;
+  assign sync_rst_out = sync_rst;
+  assign vbw_almost_full_out = vbw_wr_almost_full;
 
   /* reset signal synchronizers */
 
@@ -1104,9 +1112,9 @@ module mpeg2video(clk, mem_clk, dot_clk,
   /* On-Screen Display */
 
   mpeg2_osd osd (
-    .clk(dot_clk), 
-    .clk_en(1'b1), 
-    .rst(dot_rst), 
+    .clk(dot_clk),
+    .clk_en(1'b1),
+    .rst(dot_rst),
     .y_in(y_mixer),                                          // from mixer
     .u_in(u_mixer),                                          // from mixer
     .v_in(v_mixer),                                          // from mixer

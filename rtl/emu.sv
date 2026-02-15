@@ -57,8 +57,9 @@ module emu (
 	output        SD_CS,
 	input         SD_CD,
 
+
 	output        DDRAM_CLK,
-	output        DDRAM_BUSY,
+	input         DDRAM_BUSY,
 	output  [7:0] DDRAM_BURSTCNT,
 	output [28:0] DDRAM_ADDR,
 	input  [63:0] DDRAM_DOUT,
@@ -95,7 +96,7 @@ assign VIDEO_ARY    = 13'd3;
 
 assign VGA_F1       = 0;
 assign VGA_SL       = 0;
-assign VGA_SCALER   = 0; // Direct video output — core syncgen provides VGA 640x480 timing
+assign VGA_SCALER   = 1; // Enable scaler for universal HDMI compatibility
 assign VGA_DISABLE  = 0;
 assign HDMI_FREEZE      = 0;
 assign HDMI_BLACKOUT    = 0;
@@ -112,19 +113,25 @@ assign SD_SCK       = 0;
 assign SD_MOSI      = 0;
 assign SD_CS        = 1;
 
-assign DDRAM_CLK    = 0;
-assign DDRAM_BURSTCNT = 0;
-assign DDRAM_ADDR   = 0;
-assign DDRAM_DIN    = 0;
-assign DDRAM_BE     = 0;
-assign DDRAM_RD     = 0;
-assign DDRAM_WE     = 0;
-assign DDRAM_BUSY   = 0;
+// SDRAM Interface -- Unused
+assign SDRAM_CLK    = 0;
+assign SDRAM_CKE    = 0;
+assign SDRAM_A      = 0;
+assign SDRAM_BA     = 0;
+assign SDRAM_DQ     = 16'bZ;
+assign SDRAM_DQML   = 0;
+assign SDRAM_DQMH   = 0;
+assign SDRAM_nCS    = 1;
+assign SDRAM_nWE    = 1;
+assign SDRAM_nCAS   = 1;
+assign SDRAM_nRAS   = 1;
 
 assign UART_RTS     = 1;
+assign UART_DTR     = 1;
 // assign UART_TXD     = 1;
 
-assign USER_OUT     = '1;
+// Debug: Stream loading status on USER_OUT pins
+// assign USER_OUT     = {3'b0, streamer_active, streamer_sd_rd, streamer_sd_ack, streamer_has_data};
 
 // =========================================================================
 // Clocks and Reset
@@ -140,6 +147,9 @@ sys_pll sys_pll (
     .locked   (locked)
 );
 
+// Memory clock drives DDR3 interface
+assign DDRAM_CLK = clk_mem;
+
 // Active-low reset for the mpeg2video core
 // The core's internal reset module handles watchdog_rst independently,
 // so we must NOT feed watchdog_rst back into rst to avoid a latch-up:
@@ -147,7 +157,7 @@ sys_pll sys_pll (
 wire watchdog_rst;
 wire reset_n = locked & ~RESET;
 
-assign CLK_VIDEO = clk_vid;
+assign CLK_VIDEO = clk_vid;  // 25.175 MHz - standard VGA for HDMI compatibility
 assign CE_PIXEL  = 1'b1;
 
 // =========================================================================
@@ -206,7 +216,7 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io_inst (
 
     // SD sector-level access (virtual disk for MPG streaming)
     .sd_lba         ('{sd_lba}),
-    .sd_blk_cnt     ('{0}),
+    .sd_blk_cnt     ('{6'd0}),
     .sd_rd          (sd_rd),
     .sd_wr          (1'b0),
     .sd_ack         (sd_ack),
@@ -244,6 +254,9 @@ always @(posedge clk_sys or negedge reset_n) begin
     end
 end
 
+wire streamer_active, streamer_sd_rd, streamer_sd_ack, streamer_has_data;
+wire [15:0] streamer_file_size, streamer_total_sectors, streamer_next_lba;
+
 mpg_streamer mpg_streamer_inst (
     .clk            (clk_sys),
     .rst_n          (reset_n),
@@ -260,7 +273,15 @@ mpg_streamer mpg_streamer_inst (
 
     .stream_data    (stream_data),
     .stream_valid   (stream_valid),
-    .busy           (core_busy)
+    .busy           (core_busy),
+
+    .debug_active         (streamer_active),
+    .debug_sd_rd          (streamer_sd_rd),
+    .debug_sd_ack         (streamer_sd_ack),
+    .debug_cache_has_data (streamer_has_data),
+    .debug_file_size      (streamer_file_size),
+    .debug_total_sectors  (streamer_total_sectors),
+    .debug_next_lba       (streamer_next_lba)
 );
 
 // =========================================================================
@@ -278,12 +299,20 @@ wire        shim_mem_almost_full;
 wire [7:0] core_r, core_g, core_b;
 wire       core_h_sync, core_v_sync;
 wire [11:0] core_h_pos, core_v_pos;
+wire [8:0]  core_init_cnt;
+wire        core_sync_rst;
+wire        core_vbw_almost_full;
 wire       core_pixel_en;
+wire [3:0]  shim_debug_state;
+wire        shim_debug_sdram_busy;
+wire        shim_debug_sdram_ack;
+wire [15:0] shim_debug_rd_count;
+wire [15:0] shim_debug_wr_count;
 
 mpeg2video mpeg2video_inst (
     .clk        (clk_sys),
     .mem_clk    (clk_mem),
-    .dot_clk    (clk_vid),
+    .dot_clk    (clk_vid),  // 25.175 MHz video output clock
     .rst        (reset_n),
 
     .stream_data  (stream_data),
@@ -323,20 +352,15 @@ mpeg2video mpeg2video_inst (
     .mem_res_wr_almost_full  (shim_mem_almost_full),
 
     .testpoint_dip    (4'b0),
-    .testpoint_dip_en (1'b0)
+    .testpoint_dip_en (1'b0),
+    .init_cnt_out     (core_init_cnt),
+    .sync_rst_out     (core_sync_rst),
+    .vbw_almost_full_out (core_vbw_almost_full)
 );
 
 // =========================================================================
-// Memory Shim: 64-bit core <-> 16-bit SDRAM
+// Memory Shim: 64-bit core <-> 64-bit DDR3
 // =========================================================================
-wire [24:0] sdram_addr;
-wire        sdram_rd;
-wire        sdram_wr;
-wire [15:0] sdram_din;
-wire [15:0] sdram_dout_wire;
-wire        sdram_ack_wire;
-wire        sdram_busy_wire;
-
 mem_shim mem_shim_inst (
     .clk              (clk_mem),
     .rst_n            (reset_n),
@@ -351,41 +375,22 @@ mem_shim mem_shim_inst (
     .mem_res_wr_en           (shim_mem_en),
     .mem_res_wr_almost_full  (shim_mem_almost_full),
 
-    .sdram_addr  (sdram_addr),
-    .sdram_rd    (sdram_rd),
-    .sdram_wr    (sdram_wr),
-    .sdram_din   (sdram_din),
-    .sdram_dout  (sdram_dout_wire),
-    .sdram_ack   (sdram_ack_wire),
-    .sdram_busy  (sdram_busy_wire)
-);
+    // DDR3 Avalon-MM Interface
+    .ddr3_addr          (DDRAM_ADDR),
+    .ddr3_burstcnt      (DDRAM_BURSTCNT),
+    .ddr3_read          (DDRAM_RD),
+    .ddr3_write         (DDRAM_WE),
+    .ddr3_writedata     (DDRAM_DIN),
+    .ddr3_byteenable    (DDRAM_BE),
+    .ddr3_readdata      (DDRAM_DOUT),
+    .ddr3_readdatavalid (DDRAM_DOUT_READY),
+    .ddr3_waitrequest   (DDRAM_BUSY),
 
-// =========================================================================
-// SDRAM Controller
-// =========================================================================
-sdram sdram_inst (
-    .CLK       (clk_mem),
-    .RESET_N   (reset_n),
-
-    .ADDR      (sdram_addr),
-    .RD        (sdram_rd),
-    .WR        (sdram_wr),
-    .DIN       (sdram_din),
-    .DOUT      (sdram_dout_wire),
-    .BUSY      (sdram_busy_wire),
-    .ACK       (sdram_ack_wire),
-
-    .SDRAM_CLK   (SDRAM_CLK),
-    .SDRAM_CKE   (SDRAM_CKE),
-    .SDRAM_CS_n  (SDRAM_nCS),
-    .SDRAM_WE_n  (SDRAM_nWE),
-    .SDRAM_CAS_n (SDRAM_nCAS),
-    .SDRAM_RAS_n (SDRAM_nRAS),
-    .SDRAM_BA    (SDRAM_BA),
-    .SDRAM_A     (SDRAM_A),
-    .SDRAM_DQ    (SDRAM_DQ),
-    .SDRAM_DQML  (SDRAM_DQML),
-    .SDRAM_DQMH  (SDRAM_DQMH)
+    .debug_state      (shim_debug_state),
+    .debug_sdram_busy (shim_debug_sdram_busy),
+    .debug_sdram_ack  (shim_debug_sdram_ack),
+    .debug_rd_count   (shim_debug_rd_count),
+    .debug_wr_count   (shim_debug_wr_count)
 );
 
 // =========================================================================
@@ -397,12 +402,12 @@ sdram sdram_inst (
 // VGA_HS/VGA_VS/VGA_DE, the MiSTer ascal scaler has no input and the
 // HDMI transmitter outputs nothing ("Looking for signal").
 //
-// This fallback generator runs independently on clk_vid (25.175 MHz)
-// and produces standard VGA 640x480@60Hz timing with a black screen.
+// This fallback generator runs on clk_vid (25.175 MHz)
+// and produces standard VGA 640x480 @ 60Hz timing with a white screen.
 // Once the core's syncgen starts producing valid vsync edges, we
 // switch the output mux to the core's video.
 //
-// VGA 640x480@60Hz timing (25.175 MHz pixel clock):
+// Standard VGA 640x480 @ 60Hz timing (25.175 MHz pixel clock):
 //   H: 640 visible, total 800 (HFP=16, HS=96, HBP=48)
 //   V: 480 visible, total 525 (VFP=10, VS=2, VBP=33)
 
@@ -483,13 +488,35 @@ assign VGA_DE = core_video_active ? core_pixel_en : fb_de;
 uart_debug debug_inst (
     .clk(clk_sys),
     .rst_n(reset_n),
+    .tx_pin(UART_TXD),
     .locked(locked),
     .active(core_video_active),
     .arx({1'b0, core_h_pos}),
     .ary({1'b0, core_v_pos}),
     .busy(core_busy),
     .valid(stream_valid),
-    .tx_pin(UART_TXD)
+    // Additional debug signals from mpeg2video core internals
+    .init_cnt(core_init_cnt),
+    .sync_rst(core_sync_rst),
+    .vbw_almost_full(core_vbw_almost_full),
+    .mem_req_en(core_mem_en),
+    .mem_req_valid(core_mem_valid),
+    .mem_res_almost_full(shim_mem_almost_full),
+    // DDR3 debug (mapped through mem_shim debug outputs)
+    .shim_state(shim_debug_state),          // M: 0=IDLE 1=WR_WAIT 2=RD_WAIT
+    .sdram_busy(shim_debug_sdram_busy),     // U: ddr3_waitrequest
+    .sdram_ack(shim_debug_sdram_ack),       // K: ddr3 transaction accepted
+    // MPG streamer debug
+    .streamer_active(streamer_active),
+    .streamer_sd_rd(streamer_sd_rd),
+    .streamer_sd_ack(streamer_sd_ack),
+    .streamer_has_data(streamer_has_data),
+    .streamer_file_size(streamer_file_size),
+    .streamer_total_sectors(streamer_total_sectors),
+    .streamer_next_lba(streamer_next_lba),
+    // Memory read/write counters
+    .mem_rd_count(shim_debug_rd_count),     // P: DDR3 read completions
+    .mem_wr_count(shim_debug_wr_count)      // W: DDR3 write completions
 );
 
 assign CLK_SYS = clk_sys;
@@ -499,12 +526,17 @@ assign CLK_MEM = clk_mem;
 // LEDs and Debug
 // =========================================================================
 assign LED_POWER    = 2'b00; // Let system control
-assign LED_DISK     = 2'b00;
+assign LED_DISK     = {streamer_active, stream_valid}; // LED indicates: streaming active, data flowing
 assign LOCKED       = locked;
 
 reg [24:0] heartbeat;
 always @(posedge clk_sys) heartbeat <= heartbeat + 1'b1;
 assign LED_USER     = heartbeat[24]; // Toggle ~1Hz @ 27MHz
+
+// Route UART TX to User IO (Pin 0/1 usually, adapting for standard cable)
+// User IO pin mapping usually: [0]=TX, [1]=RX or vice versa depending on cable.
+// emu connects to sys_top user_out/user_in.
+assign USER_OUT = {6'b0, UART_TXD};
 
 endmodule
 

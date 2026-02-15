@@ -38,7 +38,7 @@ set_global_assignment -name VERILOG_FILE rtl/uart_tx.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/uart_debug.sv
 
 
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/sdram.sv
+
 
 # Logic Modules (Headers excluded, found via SEARCH_PATH)
 set_global_assignment -name VERILOG_FILE rtl/mpeg2/framestore.v

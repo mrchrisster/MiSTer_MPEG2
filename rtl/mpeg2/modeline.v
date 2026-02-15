@@ -26,7 +26,9 @@
 `ifndef MODELINE_PAL_PROGR
 `ifndef MODELINE_HDTV_INTERL
 `ifndef MODELINE_VGA
-`define MODELINE_SVGA 1
+`ifndef MODELINE_SVGA
+`define MODELINE_VGA 1  // Standard VGA 640x480@60Hz for 25.175 MHz dot_clk
+`endif
 `endif
 `endif
 `endif

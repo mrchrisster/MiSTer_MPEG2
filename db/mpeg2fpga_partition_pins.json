@@ -4,35 +4,11 @@
 			"name" : "Top",
 			"pins" : [
 				{
-					"name" : "HDMI_TX_HS",
+					"name" : "HDMI_TX_VS",
 					"strict" : false
 				},
 				{
 					"name" : "LED_USER",
-					"strict" : false
-				},
-				{
-					"name" : "LED[1]",
-					"strict" : false
-				},
-				{
-					"name" : "LED[3]",
-					"strict" : false
-				},
-				{
-					"name" : "LED[4]",
-					"strict" : false
-				},
-				{
-					"name" : "LED[5]",
-					"strict" : false
-				},
-				{
-					"name" : "LED[7]",
-					"strict" : false
-				},
-				{
-					"name" : "HDMI_LRCLK",
 					"strict" : false
 				},
 				{
@@ -136,79 +112,7 @@
 					"strict" : false
 				},
 				{
-					"name" : "HDMI_TX_VS",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_A[0]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_A[1]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_A[2]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_A[3]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_A[4]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_A[5]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_A[6]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_A[7]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_A[8]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_A[9]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_A[10]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_A[11]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_A[12]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_nWE",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_nCAS",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_nRAS",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_BA[0]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_BA[1]",
+					"name" : "HDMI_TX_HS",
 					"strict" : false
 				},
 				{
@@ -288,6 +192,34 @@
 					"strict" : false
 				},
 				{
+					"name" : "AUDIO_L",
+					"strict" : false
+				},
+				{
+					"name" : "AUDIO_R",
+					"strict" : false
+				},
+				{
+					"name" : "AUDIO_SPDIF",
+					"strict" : false
+				},
+				{
+					"name" : "LED[7]",
+					"strict" : false
+				},
+				{
+					"name" : "HDMI_SCLK",
+					"strict" : false
+				},
+				{
+					"name" : "HDMI_LRCLK",
+					"strict" : false
+				},
+				{
+					"name" : "HDMI_I2S",
+					"strict" : false
+				},
+				{
 					"name" : "SDIO_CLK",
 					"strict" : false
 				},
@@ -304,34 +236,6 @@
 					"strict" : false
 				},
 				{
-					"name" : "LED[0]",
-					"strict" : false
-				},
-				{
-					"name" : "LED[2]",
-					"strict" : false
-				},
-				{
-					"name" : "LED[6]",
-					"strict" : false
-				},
-				{
-					"name" : "HDMI_I2S",
-					"strict" : false
-				},
-				{
-					"name" : "AUDIO_L",
-					"strict" : false
-				},
-				{
-					"name" : "AUDIO_R",
-					"strict" : false
-				},
-				{
-					"name" : "AUDIO_SPDIF",
-					"strict" : false
-				},
-				{
 					"name" : "SD_SPI_CLK",
 					"strict" : false
 				},
@@ -344,31 +248,43 @@
 					"strict" : false
 				},
 				{
-					"name" : "HDMI_SCLK",
+					"name" : "LED[0]",
 					"strict" : false
 				},
 				{
-					"name" : "SDRAM_nCS",
+					"name" : "LED[1]",
+					"strict" : false
+				},
+				{
+					"name" : "LED[2]",
+					"strict" : false
+				},
+				{
+					"name" : "LED[3]",
+					"strict" : false
+				},
+				{
+					"name" : "LED[4]",
+					"strict" : false
+				},
+				{
+					"name" : "LED[5]",
+					"strict" : false
+				},
+				{
+					"name" : "LED[6]",
+					"strict" : false
+				},
+				{
+					"name" : "IO_SDA",
+					"strict" : false
+				},
+				{
+					"name" : "SDIO_CMD",
 					"strict" : false
 				},
 				{
 					"name" : "VGA_HS",
-					"strict" : false
-				},
-				{
-					"name" : "SDIO_DAT[0]",
-					"strict" : false
-				},
-				{
-					"name" : "SDIO_DAT[1]",
-					"strict" : false
-				},
-				{
-					"name" : "SDIO_DAT[2]",
-					"strict" : false
-				},
-				{
-					"name" : "SDIO_DAT[3]",
 					"strict" : false
 				},
 				{
@@ -388,75 +304,23 @@
 					"strict" : false
 				},
 				{
-					"name" : "SDRAM_DQ[0]",
+					"name" : "USER_IO[0]",
 					"strict" : false
 				},
 				{
-					"name" : "SDRAM_DQ[1]",
+					"name" : "SDIO_DAT[0]",
 					"strict" : false
 				},
 				{
-					"name" : "SDRAM_DQ[2]",
+					"name" : "SDIO_DAT[1]",
 					"strict" : false
 				},
 				{
-					"name" : "SDRAM_DQ[3]",
+					"name" : "SDIO_DAT[2]",
 					"strict" : false
 				},
 				{
-					"name" : "SDRAM_DQ[4]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_DQ[5]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_DQ[6]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_DQ[7]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_DQ[8]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_DQ[9]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_DQ[10]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_DQ[11]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_DQ[12]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_DQ[13]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_DQ[14]",
-					"strict" : false
-				},
-				{
-					"name" : "SDRAM_DQ[15]",
-					"strict" : false
-				},
-				{
-					"name" : "SDIO_CMD",
-					"strict" : false
-				},
-				{
-					"name" : "IO_SDA",
+					"name" : "SDIO_DAT[3]",
 					"strict" : false
 				},
 				{
@@ -472,6 +336,10 @@
 					"strict" : false
 				},
 				{
+					"name" : "SW[0]",
+					"strict" : false
+				},
+				{
 					"name" : "FPGA_CLK2_50",
 					"strict" : false
 				},
@@ -480,7 +348,7 @@
 					"strict" : false
 				},
 				{
-					"name" : "SW[0]",
+					"name" : "SW[1]",
 					"strict" : false
 				},
 				{
@@ -497,10 +365,6 @@
 				},
 				{
 					"name" : "KEY[1]",
-					"strict" : false
-				},
-				{
-					"name" : "SW[1]",
 					"strict" : false
 				},
 				{
