@@ -87,7 +87,6 @@ module tb_mem_shim;
 
         // Wait for acceptance
         wait(mem_req_rd_en == 0); // FSM should deassert EN when accepting
-        @(posedge clk);
         #1; // Wait for combinational logic to settle
         $display("Core Request Accepted");
         
@@ -108,7 +107,6 @@ module tb_mem_shim;
         mem_req_rd_valid = 1;
 
         wait(mem_req_rd_en == 0);
-        @(posedge clk); 
         #1;
         if (ddr3_read !== 1) $error("DDR3 Read not asserted");
         // Address Check
