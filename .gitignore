@@ -5,6 +5,7 @@ Template_MiSTer-master/
 CDi_MiSTer-main/
 mpeg2fpga-orig/
 incremental_db/
+bench/
 *.ppm
 *.lxt
 *.mpg
