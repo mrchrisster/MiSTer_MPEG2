@@ -60,6 +60,12 @@ module tb_mem_shim;
     initial begin
         $dumpfile("mem_shim.vcd");
         $dumpvars(0, tb_mem_shim);
+        
+        // Monitor debug signals
+        $monitor("Time: %t | State: %b | Req: %h (V:%b) | En: %b | Saved: %b (V:%b) | DDR: W:%b R:%b Addr:%h", 
+                 $time, uut.state, mem_req_rd_cmd, mem_req_rd_valid, mem_req_rd_en, 
+                 uut.saved_cmd, uut.saved_valid, 
+                 ddr3_write, ddr3_read, ddr3_addr);
 
         // Initialize Inputs
         rst_n = 0;
@@ -160,6 +166,50 @@ module tb_mem_shim;
         // Should return to IDLE and assert EN (popping)
         if (mem_req_rd_en !== 1) $error("Core Request NOT accepted (en!=1) after Waitrequest release");
         
+        @(posedge clk);
+        mem_req_rd_valid = 0;
+
+        #100;
+
+        // Test 4: Skid Buffer (Data Latency)
+        // Simulate: FIFO has 2 items. We pop the first. FSM accepts it and drops EN.
+        // BUT logic latency means the 2nd item appears VALID one cycle LATER.
+        $display("Test 4: Skid Buffer");
+
+        // 1. First Request (Trigger WAIT state)
+        mem_req_rd_cmd = 2'd3; // WRITE
+        mem_req_rd_addr = 22'hAAAAAA;
+        mem_req_rd_valid = 1;
+
+        // FSM takes 1 cycle to see it and go to WAIT
+        @(posedge clk); 
+        #1;
+        
+        // 2. TRIGGER SKID:
+        // FSM is now in WAIT (or transitioning to it). EN should be 0.
+        // We simulate the FIFO output changing to the next item (Skid)
+        mem_req_rd_cmd = 2'd2; // READ (The Skid Item)
+        mem_req_rd_addr = 22'hBBBBBB;
+        mem_req_rd_valid = 1; // It remains VALID 
+        
+        // Verify First Request (Write) is on bus NOW
+        if (ddr3_write !== 1) $error("First Request (Write) not asserted during WAIT");
+
+        // Complete First Request
+        ddr3_waitrequest = 0; // Accept Write immediately
+        
+        // 3. Next Cycle: FSM returns to IDLE. 
+        // Logic should see Saved Skid Data and immediately Assert Read.
+        
+        // Wait for Read to be asserted (timeout logic implicit in simulation length)
+        wait(ddr3_read);
+        
+        #1;
+        // Verify Skid Request is correct
+        if (ddr3_addr !== {4'b0011, 22'hBBBBBB, 3'b000}) $error("Skid Address mismatch");
+        $display("Skid Buffer Test Passed: Read asserted with correct address.");
+
+        // Complete Skid Request
         @(posedge clk);
         mem_req_rd_valid = 0;
 

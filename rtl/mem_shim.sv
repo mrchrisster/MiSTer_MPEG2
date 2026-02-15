@@ -62,6 +62,13 @@ module mem_shim (
 
     reg state;
 
+    // Skid buffer to capture the command that exits the FIFO 
+    // one cycle after we deassert mem_req_rd_en.
+    reg        saved_valid;
+    reg [1:0]  saved_cmd;
+    reg [21:0] saved_addr;
+    reg [63:0] saved_dta;
+
     always @(posedge clk) begin
         if (!rst_n) begin
             state         <= 0;
@@ -72,6 +79,10 @@ module mem_shim (
             mem_req_rd_en <= 0;
             mem_res_wr_en <= 0;
             mem_res_wr_dta <= 0;
+            saved_valid <= 0;
+            saved_cmd <= 0;
+            saved_addr <= 0;
+            saved_dta <= 0;
         end
         else begin
             // -----------------------------------------------------------------
@@ -86,10 +97,36 @@ module mem_shim (
             // -----------------------------------------------------------------
             if (!state) begin
                 // IDLE State
-                // Default: Keep popping if response FIFO has space
-                mem_req_rd_en <= !mem_res_wr_almost_full;
-
-                if (mem_req_rd_valid && !mem_res_wr_almost_full) begin
+                
+                // Priority: Process Saved Request -> New Request
+                if (saved_valid && !mem_res_wr_almost_full) begin
+                    // Process Saved Request
+                    case (saved_cmd)
+                        CMD_WRITE: begin
+                            ram_write     <= 1;
+                            ram_address   <= {4'b0011, saved_addr, 3'b000};
+                            ram_writedata <= saved_dta;
+                            state         <= 1;     // Go to WAIT
+                            saved_valid   <= 0;     // Consumed
+                            mem_req_rd_en <= 0;     // Ensure EN stays low
+                        end
+                        CMD_READ: begin
+                            ram_read      <= 1;
+                            ram_address   <= {4'b0011, saved_addr, 3'b000};
+                            state         <= 1;     // Go to WAIT
+                            saved_valid   <= 0;     // Consumed
+                            mem_req_rd_en <= 0;     // Ensure EN stays low
+                        end
+                        default: begin
+                            // NOOP/REFRESH from Skid: Consumed, stay in IDLE
+                            saved_valid   <= 0;
+                            // Immediately check FIFO or enable flow
+                            mem_req_rd_en <= !mem_res_wr_almost_full;
+                        end
+                    endcase
+                end
+                else if (mem_req_rd_valid && !mem_res_wr_almost_full) begin
+                    // Process New FIFO Request
                     case (mem_req_rd_cmd)
                         CMD_WRITE: begin
                             ram_write     <= 1;
@@ -105,8 +142,12 @@ module mem_shim (
                             mem_req_rd_en <= 0;     // Stop popping
                         end
                         // Ignore NOOP/REFRESH, keep popping
-                        default: ;
+                        default: mem_req_rd_en <= !mem_res_wr_almost_full;
                     endcase
+                end
+                else begin
+                    // No requests, maintain flow
+                    mem_req_rd_en <= !mem_res_wr_almost_full;
                 end
             end
             else begin
@@ -119,6 +160,17 @@ module mem_shim (
                     
                     // Resume flow control (look ahead for next cycle)
                     mem_req_rd_en <= !mem_res_wr_almost_full;
+                end
+                
+                // DATA LOSS FIX: Capture Skid Data
+                // If we entered WAIT, mem_req_rd_en was deasserted in previous cycle.
+                // But FIFO latency means valid data might appear NOW (1 cycle late).
+                // We MUST capture it.
+                if (mem_req_rd_valid && !saved_valid) begin
+                    saved_valid <= 1;
+                    saved_cmd   <= mem_req_rd_cmd;
+                    saved_addr  <= mem_req_rd_addr;
+                    saved_dta   <= mem_req_rd_dta;
                 end
                 // Else: Stay in WAIT, holding ram_read/write/addr/data stable
             end
