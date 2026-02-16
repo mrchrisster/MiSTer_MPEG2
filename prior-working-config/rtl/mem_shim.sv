@@ -1,0 +1,205 @@
+module mem_shim (
+    input             clk,
+    input             rst_n,
+
+    // MPEG2 Core memory request FIFO (read side) — clocked on clk (mem_clk)
+    input       [1:0] mem_req_rd_cmd,
+    input      [21:0] mem_req_rd_addr,
+    input      [63:0] mem_req_rd_dta,
+    output reg        mem_req_rd_en,
+    input             mem_req_rd_valid,
+
+    // MPEG2 Core memory response FIFO (write side) — clocked on clk (mem_clk)
+    output reg [63:0] mem_res_wr_dta,
+    output reg        mem_res_wr_en,
+    input             mem_res_wr_almost_full,
+
+    // DDR3 Controller Interface (Avalon-MM 64-bit)
+    output     [28:0] ddr3_addr,
+    output      [7:0] ddr3_burstcnt,
+    output            ddr3_read,
+    output            ddr3_write,
+    output     [63:0] ddr3_writedata,
+    output      [7:0] ddr3_byteenable,
+    input      [63:0] ddr3_readdata,
+    input             ddr3_readdatavalid,
+    input             ddr3_waitrequest,
+
+    // Debug outputs
+    output     [3:0]  debug_state,
+    output            debug_sdram_busy,
+    output            debug_sdram_ack,
+    output    [15:0]  debug_rd_count,
+    output    [15:0]  debug_wr_count
+);
+
+    // Command encoding (from mem_codes.v)
+    localparam CMD_NOOP    = 2'd0;
+    localparam CMD_REFRESH = 2'd1;
+    localparam CMD_READ    = 2'd2;
+    localparam CMD_WRITE   = 2'd3;
+
+    // =========================================================================
+    // DDR3 Avalon-MM outputs
+    // =========================================================================
+    reg        ram_read;
+    reg        ram_write;
+    reg [28:0] ram_address;
+    reg [63:0] ram_writedata;
+
+    assign ddr3_read       = ram_read;
+    assign ddr3_write      = ram_write;
+    assign ddr3_addr       = ram_address;
+    assign ddr3_writedata  = ram_writedata;
+    assign ddr3_burstcnt   = 8'd1;
+    assign ddr3_byteenable = 8'hFF;
+
+    // =========================================================================
+    // FSM
+    // =========================================================================
+    // state=0 (IDLE): Accept new FIFO commands
+    // state=1 (WAIT): Wait for transaction acceptance (!waitrequest)
+
+    reg state;
+
+    // Skid buffer to capture the command that exits the FIFO 
+    // one cycle after we deassert mem_req_rd_en.
+    reg        saved_valid;
+    reg [1:0]  saved_cmd;
+    reg [21:0] saved_addr;
+    reg [63:0] saved_dta;
+
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            state         <= 0;
+            ram_read      <= 0;
+            ram_write     <= 0;
+            ram_address   <= 0;
+            ram_writedata <= 0;
+            mem_req_rd_en <= 0;
+            mem_res_wr_en <= 0;
+            mem_res_wr_dta <= 0;
+            saved_valid <= 0;
+            saved_cmd <= 0;
+            saved_addr <= 0;
+            saved_dta <= 0;
+        end
+        else begin
+            // -----------------------------------------------------------------
+            // Response Path (Always Active)
+            // -----------------------------------------------------------------
+            mem_res_wr_en <= ddr3_readdatavalid;
+            if (ddr3_readdatavalid)
+                mem_res_wr_dta <= ddr3_readdata;
+
+            // -----------------------------------------------------------------
+            // Command Path
+            // -----------------------------------------------------------------
+            if (!state) begin
+                // IDLE State
+                
+                // Priority: Process Saved Request -> New Request
+                if (saved_valid && !mem_res_wr_almost_full) begin
+                    // Process Saved Request
+                    case (saved_cmd)
+                        CMD_WRITE: begin
+                            ram_write     <= 1;
+                            ram_address   <= {4'b0011, saved_addr, 3'b000};
+                            ram_writedata <= saved_dta;
+                            state         <= 1;     // Go to WAIT
+                            saved_valid   <= 0;     // Consumed
+                            mem_req_rd_en <= 0;     // Ensure EN stays low
+                        end
+                        CMD_READ: begin
+                            ram_read      <= 1;
+                            ram_address   <= {4'b0011, saved_addr, 3'b000};
+                            state         <= 1;     // Go to WAIT
+                            saved_valid   <= 0;     // Consumed
+                            mem_req_rd_en <= 0;     // Ensure EN stays low
+                        end
+                        default: begin
+                            // NOOP/REFRESH from Skid: Consumed, stay in IDLE
+                            saved_valid   <= 0;
+                            // Immediately check FIFO or enable flow
+                            mem_req_rd_en <= !mem_res_wr_almost_full;
+                        end
+                    endcase
+                end
+                else if (mem_req_rd_valid && !mem_res_wr_almost_full) begin
+                    // Process New FIFO Request
+                    case (mem_req_rd_cmd)
+                        CMD_WRITE: begin
+                            ram_write     <= 1;
+                            ram_address   <= {4'b0011, mem_req_rd_addr, 3'b000};
+                            ram_writedata <= mem_req_rd_dta;
+                            state         <= 1;     // Go to WAIT
+                            mem_req_rd_en <= 0;     // Stop popping
+                        end
+                        CMD_READ: begin
+                            ram_read      <= 1;
+                            ram_address   <= {4'b0011, mem_req_rd_addr, 3'b000};
+                            state         <= 1;     // Go to WAIT
+                            mem_req_rd_en <= 0;     // Stop popping
+                        end
+                        // Ignore NOOP/REFRESH, keep popping
+                        default: mem_req_rd_en <= !mem_res_wr_almost_full;
+                    endcase
+                end
+                else begin
+                    // No requests, maintain flow
+                    mem_req_rd_en <= !mem_res_wr_almost_full;
+                end
+            end
+            else begin
+                // WAIT State
+                if (!ddr3_waitrequest) begin
+                    // Transaction Accepted
+                    ram_read  <= 0;
+                    ram_write <= 0;
+                    state     <= 0; // Back to IDLE
+                    
+                    // Resume flow control (look ahead for next cycle)
+                    mem_req_rd_en <= !mem_res_wr_almost_full;
+                end
+                
+                // DATA LOSS FIX: Capture Skid Data
+                // If we entered WAIT, mem_req_rd_en was deasserted in previous cycle.
+                // But FIFO latency means valid data might appear NOW (1 cycle late).
+                // We MUST capture it.
+                if (mem_req_rd_valid && !saved_valid) begin
+                    saved_valid <= 1;
+                    saved_cmd   <= mem_req_rd_cmd;
+                    saved_addr  <= mem_req_rd_addr;
+                    saved_dta   <= mem_req_rd_dta;
+                end
+                // Else: Stay in WAIT, holding ram_read/write/addr/data stable
+            end
+        end
+    end
+
+    // =========================================================================
+    // Debug
+    // =========================================================================
+    reg [15:0] rd_count;
+    reg [15:0] wr_count;
+
+    wire rd_accepted = ddr3_read  && !ddr3_waitrequest;
+    wire wr_accepted = ddr3_write && !ddr3_waitrequest;
+
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            rd_count <= 0;
+            wr_count <= 0;
+        end else begin
+            if (rd_accepted) rd_count <= rd_count + 1'd1;
+            if (wr_accepted) wr_count <= wr_count + 1'd1;
+        end
+    end
+
+    assign debug_state      = {3'b000, state};
+    assign debug_sdram_busy = ddr3_waitrequest;
+    assign debug_sdram_ack  = rd_accepted | wr_accepted;
+    assign debug_rd_count   = rd_count;
+    assign debug_wr_count   = wr_count;
+
+endmodule

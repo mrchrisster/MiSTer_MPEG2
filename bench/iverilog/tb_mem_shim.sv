@@ -99,7 +99,7 @@ module tb_mem_shim;
         if (ddr3_write !== 1) $error("DDR3 Write not asserted");
         // Address Check: Expect {4'b0011, 22'h123456, 3'b000}
         // 4'b0011 = 3
-        if (ddr3_addr !== {4'b0011, 22'h123456, 3'b000}) $error("DDR3 Address mismatch. Got: %h", ddr3_addr);
+        if (ddr3_addr !== {4'b0110, 2'b00, 22'h123456, 1'b0}) $error("DDR3 Address mismatch. Got: %h", ddr3_addr);
         if (ddr3_writedata !== 64'hDEADBEEFCAFEBABE) $error("DDR3 Data mismatch");
 
         mem_req_rd_valid = 0;
@@ -116,7 +116,7 @@ module tb_mem_shim;
         #1;
         if (ddr3_read !== 1) $error("DDR3 Read not asserted");
         // Address Check
-        if (ddr3_addr !== {4'b0011, 22'h1BCDEF, 3'b000}) $error("DDR3 Address mismatch. Got: %h", ddr3_addr);
+        if (ddr3_addr !== {4'b0110, 2'b00, 22'h1BCDEF, 1'b0}) $error("DDR3 Address mismatch. Got: %h", ddr3_addr);
 
         // FSM should still be in WAIT (waitrequest=0) -> IDLE next cycle
         mem_req_rd_valid = 0;
@@ -206,7 +206,7 @@ module tb_mem_shim;
         
         #1;
         // Verify Skid Request is correct
-        if (ddr3_addr !== {4'b0011, 22'hBBBBBB, 3'b000}) $error("Skid Address mismatch");
+        if (ddr3_addr !== {4'b0110, 2'b00, 22'hBBBBBB, 1'b0}) $error("Skid Address mismatch");
         $display("Skid Buffer Test Passed: Read asserted with correct address.");
 
         // Complete Skid Request

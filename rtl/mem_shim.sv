@@ -104,7 +104,7 @@ module mem_shim (
                     case (saved_cmd)
                         CMD_WRITE: begin
                             ram_write     <= 1;
-                            ram_address   <= {4'b0011, saved_addr, 3'b000};
+                            ram_address   <= {4'b0110, 2'b00, saved_addr, 1'b0};
                             ram_writedata <= saved_dta;
                             state         <= 1;     // Go to WAIT
                             saved_valid   <= 0;     // Consumed
@@ -112,7 +112,7 @@ module mem_shim (
                         end
                         CMD_READ: begin
                             ram_read      <= 1;
-                            ram_address   <= {4'b0011, saved_addr, 3'b000};
+                            ram_address   <= {4'b0110, 2'b00, saved_addr, 1'b0};
                             state         <= 1;     // Go to WAIT
                             saved_valid   <= 0;     // Consumed
                             mem_req_rd_en <= 0;     // Ensure EN stays low

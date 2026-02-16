@@ -29,6 +29,11 @@ module uart_debug (
     // Memory read/write counters
     input [15:0] mem_rd_count,         // 64-bit read completions
     input [15:0] mem_wr_count,         // 64-bit write completions
+    // HDMI debug
+    input        hdmi_lock,
+    input        hdmi_vs,
+    input        hdmi_de,
+    input        hdmi_hs,
     output tx_pin
 );
 
@@ -66,6 +71,7 @@ module uart_debug (
     reg streamer_active_r, streamer_sd_rd_r, streamer_sd_ack_r, streamer_has_data_r;
     reg [15:0] streamer_file_size_r, streamer_total_sectors_r, streamer_next_lba_r;
     reg [15:0] mem_rd_count_r, mem_wr_count_r;
+    reg hdmi_lock_r, hdmi_vs_r, hdmi_de_r, hdmi_hs_r;
 
     // State machine
     localparam S_IDLE = 0;
@@ -122,6 +128,10 @@ module uart_debug (
                         streamer_next_lba_r <= streamer_next_lba;
                         mem_rd_count_r <= mem_rd_count;
                         mem_wr_count_r <= mem_wr_count;
+                        hdmi_lock_r <= hdmi_lock;
+                        hdmi_vs_r <= hdmi_vs;
+                        hdmi_de_r <= hdmi_de;
+                        hdmi_hs_r <= hdmi_hs;
                         char_idx <= 0;
                         state <= S_PRINT;
                     end
@@ -234,8 +244,12 @@ module uart_debug (
                             99: tx_data <= to_hex(streamer_next_lba_r[11:8]);
                             100: tx_data <= to_hex(streamer_next_lba_r[7:4]);
                             101: tx_data <= to_hex(streamer_next_lba_r[3:0]);
-                            102: tx_data <= "\r";
-                            103: tx_data <= "\n";
+                            102: tx_data <= " ";
+                            103: tx_data <= "Z"; // HDMI debug hex: lock, vs, de, hs
+                            104: tx_data <= ":";
+                            105: tx_data <= to_hex({hdmi_lock_r, hdmi_vs_r, hdmi_de_r, hdmi_hs_r});
+                            106: tx_data <= "\r";
+                            107: tx_data <= "\n";
                             default: begin
                                 state <= S_IDLE;
                                 tx_valid <= 0;

@@ -157,8 +157,13 @@ assign DDRAM_CLK = clk_mem;
 wire watchdog_rst;
 wire reset_n = locked & ~RESET;
 
-assign CLK_VIDEO = clk_vid;  // 25.175 MHz - standard VGA for HDMI compatibility
-assign CE_PIXEL  = 1'b1;
+// 108 MHz / 4 = 27 MHz pixel clock enable
+reg [1:0] ce_cnt;
+always @(posedge clk_mem) ce_cnt <= ce_cnt + 1'b1;
+wire ce_pixel = (ce_cnt == 2'b00);
+
+assign CLK_VIDEO = clk_mem;
+assign CE_PIXEL  = ce_pixel;
 
 // =========================================================================
 // HPS IO — OSD menu and file loading
@@ -312,7 +317,9 @@ wire [15:0] shim_debug_wr_count;
 mpeg2video mpeg2video_inst (
     .clk        (clk_sys),
     .mem_clk    (clk_mem),
-    .dot_clk    (clk_vid),  // 25.175 MHz video output clock
+    .dot_clk    (clk_mem),
+    .dot_ce     (ce_pixel),
+  // 25.175 MHz video output clock
     .rst        (reset_n),
 
     .stream_data  (stream_data),

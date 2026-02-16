@@ -27,7 +27,9 @@
 `ifndef MODELINE_HDTV_INTERL
 `ifndef MODELINE_VGA
 `ifndef MODELINE_SVGA
-`define MODELINE_VGA 1  // Standard VGA 640x480@60Hz for 25.175 MHz dot_clk
+`ifndef MODELINE_NTSC
+`define MODELINE_NTSC 1  // NTSC 720x480@60Hz for 27.0 MHz dot_clk
+`endif
 `endif
 `endif
 `endif
@@ -80,6 +82,28 @@
 
   parameter [2:0]
     VID_MODE       = 3'b000; // = {clip_display_size, pixel_repetition, interlaced}
+`endif
+
+`ifdef MODELINE_NTSC
+
+  /*
+   * modeline: NTSC 480p
+   * ModeLine "720x480"    27.0  720  736  798  858    480  489  495  525 -hsync -vsync
+   */
+
+  parameter [11:0]
+    HORZ_RES       = 719,
+    HORZ_SYNC_STRT = 735,
+    HORZ_SYNC_END  = 797,
+    HORZ_LEN       = 857,
+    VERT_RES       = 479,
+    VERT_SYNC_STRT = 488,
+    VERT_SYNC_END  = 494,
+    VERT_LEN       = 524,
+    HALFLINE       = 0;
+
+  parameter [2:0]
+    VID_MODE       = 3'b000;
 `endif
 
 `ifdef MODELINE_SIF

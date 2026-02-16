@@ -48,7 +48,7 @@
 `define CHECK 1
 `endif
 
-module mpeg2video(clk, mem_clk, dot_clk, 
+module mpeg2video(clk, mem_clk, dot_clk, dot_ce,
              rst,                                                                                                                 // clocked with clk
              stream_data, stream_valid,                                                                                           // clocked with clk
 	     reg_addr, reg_wr_en, reg_dta_in, reg_rd_en, reg_dta_out,                                                             // clocked with clk
@@ -63,6 +63,7 @@ module mpeg2video(clk, mem_clk, dot_clk,
   input            clk;                     // clock. Typically a multiple of 27 Mhz as MPEG2 timestamps have a 27 Mhz resolution.
   input            mem_clk;                 // memory clock. Typically 133-166 MHz.
   input            dot_clk;                 // video clock. Typically between 25 and 75 Mhz, depending upon MPEG2 resolution and frame rate.
+  input            dot_ce;                  // clock enable for video pipeline.
 
   input            rst;                     // active low reset. Internally synchronized.
 
@@ -1037,7 +1038,7 @@ module mpeg2video(clk, mem_clk, dot_clk,
     .pixel_wr_full(pixel_wr_full),                           // to probe
     .pixel_wr_overflow(pixel_wr_overflow),                   // to probe
     .clk_out(dot_clk), 
-    .clk_out_en(1'b1), 
+    .clk_out_en(dot_ce), 
     /* to mixer */
     .y_out(y_pqueue),                                        // to mixer
     .u_out(u_pqueue),                                        // to mixer
@@ -1050,10 +1051,9 @@ module mpeg2video(clk, mem_clk, dot_clk,
     .pixel_rd_underflow(pixel_rd_underflow_pqueue)           // to mixer
     );
 
-  /* Video synchronisation and timing generator */
   syncgen_intf syncgen_intf (
     .clk(dot_clk), 
-    .clk_en(1'b1), 
+    .clk_en(dot_ce), 
     .rst(dot_rst), 
     .horizontal_size(horizontal_size),                       // from vld
     .vertical_size(vertical_size),                           // from vld
@@ -1085,6 +1085,7 @@ module mpeg2video(clk, mem_clk, dot_clk,
   /* Mixer */
   mixer mixer (
     .clk(dot_clk), 
+    .clk_en(dot_ce),
     .rst(dot_rst), 
     .pixel_repetition(dot_pixel_repetition),                 // from register file
     .y_in(y_pqueue),                                         // from pixel queue
@@ -1113,7 +1114,7 @@ module mpeg2video(clk, mem_clk, dot_clk,
 
   mpeg2_osd osd (
     .clk(dot_clk),
-    .clk_en(1'b1),
+    .clk_en(dot_ce),
     .rst(dot_rst),
     .y_in(y_mixer),                                          // from mixer
     .u_in(u_mixer),                                          // from mixer
@@ -1138,7 +1139,7 @@ module mpeg2video(clk, mem_clk, dot_clk,
   /* Luminance, chrominance to RGB conversion */
   yuv2rgb yuv2rgb (
     .clk(dot_clk), 
-    .clk_en(1'b1), 
+    .clk_en(dot_ce), 
     .rst(dot_rst), 
     .matrix_coefficients(dot_matrix_coefficients),           // from vld
     .y(y_osd),                                               // from osd

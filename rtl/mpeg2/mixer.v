@@ -35,7 +35,7 @@
 //`define DEBUG 1
 
 module mixer(
-  clk, rst, 
+  clk, clk_en, rst, 
   pixel_repetition,
   y_in, u_in, v_in, osd_in, position_in, pixel_rd_en, pixel_rd_valid, pixel_rd_underflow,
   h_pos, v_pos, h_sync_in, v_sync_in, pixel_en_in,
@@ -43,6 +43,7 @@ module mixer(
   );
 
   input              clk;                      // clock
+  input              clk_en;                   // clock enable
   input              rst;                      // synchronous active low reset
 
   input              pixel_repetition;         // if asserted, repeat each pixel once
@@ -148,39 +149,39 @@ module mixer(
   /* state */
   always @(posedge clk)
     if(~rst) state <= STATE_INIT;
-    else state <= next;
+    else if (clk_en) state <= next;
 
   /* registers */
   /* store pixel_fifo output */
   always @(posedge clk)
     if (~rst) y_0 <= 8'd0;
-    else if (pixel_rd_valid) y_0 <= y_in;
+    else if (clk_en && pixel_rd_valid) y_0 <= y_in;
     else y_0 <= y_0;
 
   always @(posedge clk)
     if (~rst) u_0 <= 8'd0;
-    else if (pixel_rd_valid) u_0 <= u_in;
+    else if (clk_en && pixel_rd_valid) u_0 <= u_in;
     else u_0 <= u_0;
 
   always @(posedge clk)
     if (~rst) v_0 <= 8'd0;
-    else if (pixel_rd_valid) v_0 <= v_in;
+    else if (clk_en && pixel_rd_valid) v_0 <= v_in;
     else v_0 <= v_0;
 
   always @(posedge clk)
     if (~rst) osd_0 <= 8'd0;
-    else if (pixel_rd_valid) osd_0 <= osd_in;
+    else if (clk_en && pixel_rd_valid) osd_0 <= osd_in;
     else osd_0 <= osd_0;
 
   always @(posedge clk)
     if (~rst) position_in_0 <= ROW_X_COL_X;
-    else if (pixel_rd_valid) position_in_0 <= position_in;
+    else if (clk_en && pixel_rd_valid) position_in_0 <= position_in;
     else position_in_0 <= position_in_0;
 
   /* read from pixel_fifo */
   always @(posedge clk)
     if (~rst) pixel_rd_en <= 1'b0;
-    else 
+    else if (clk_en)
       case (state)
         STATE_INIT:               pixel_rd_en <= ~pixel_rd_en && ~first_pixel_read;
 	STATE_WAIT:               pixel_rd_en <= 1'b0;
@@ -196,15 +197,15 @@ module mixer(
   /* delay sync gen output */
   always @(posedge clk)
     if (~rst) h_sync_0 <= 1'b0;
-    else h_sync_0 <= h_sync_in;
+    else if (clk_en) h_sync_0 <= h_sync_in;
 
   always @(posedge clk)
     if (~rst) v_sync_0 <= 1'b0;
-    else v_sync_0 <= v_sync_in;
+    else if (clk_en) v_sync_0 <= v_sync_in;
 
   always @(posedge clk)
     if (~rst) pixel_en_0 <= 1'b0;
-    else pixel_en_0 <= pixel_en_in;
+    else if (clk_en) pixel_en_0 <= pixel_en_in;
 
   /* default values of y_out, u_out and v_out are 16, 128, 128, which maps onto black */
 
@@ -217,23 +218,23 @@ module mixer(
 
   always @(posedge clk)
     if (~rst) y_out <= 8'b0;
-    else if (pixel_en_2 && displaying) y_out <= y_0;
-    else y_out <= 8'd16;
+    else if (clk_en && pixel_en_2 && displaying) y_out <= y_0;
+    else if (clk_en) y_out <= 8'd16;
 
   always @(posedge clk)
     if (~rst) u_out <= 8'b0;
-    else if (pixel_en_2 && displaying) u_out <= u_0;
-    else u_out <= 8'd128;
+    else if (clk_en && pixel_en_2 && displaying) u_out <= u_0;
+    else if (clk_en) u_out <= 8'd128;
 
   always @(posedge clk)
     if (~rst) v_out <= 8'b0;
-    else if (pixel_en_2 && displaying) v_out <= v_0;
-    else v_out <= 8'd128;
+    else if (clk_en && pixel_en_2 && displaying) v_out <= v_0;
+    else if (clk_en) v_out <= 8'd128;
 
   always @(posedge clk)
     if (~rst) osd_out <= 8'b0;
-    else if (pixel_en_2 && displaying) osd_out <= osd_0;
-    else osd_out <= 8'd0;
+    else if (clk_en && pixel_en_2 && displaying) osd_out <= osd_0;
+    else if (clk_en) osd_out <= 8'd0;
 
  /*
   * delay h_sync, v_sync, pixel_en_out by two clocks
@@ -241,39 +242,39 @@ module mixer(
 
   always @(posedge clk)
     if (~rst) pixel_en_1 <= 1'b0;
-    else pixel_en_1 <= pixel_en_0;
+    else if (clk_en) pixel_en_1 <= pixel_en_0;
 
   always @(posedge clk)
     if (~rst) h_sync_1 <= 1'b0;
-    else h_sync_1 <= h_sync_0;
+    else if (clk_en) h_sync_1 <= h_sync_0;
 
   always @(posedge clk)
     if (~rst) v_sync_1 <= 1'b0;
-    else v_sync_1 <= v_sync_0;
+    else if (clk_en) v_sync_1 <= v_sync_0;
 
   always @(posedge clk)
     if (~rst) pixel_en_2 <= 1'b0;
-    else pixel_en_2 <= pixel_en_1;
+    else if (clk_en) pixel_en_2 <= pixel_en_1;
 
   always @(posedge clk)
     if (~rst) h_sync_2 <= 1'b0;
-    else h_sync_2 <= h_sync_1;
+    else if (clk_en) h_sync_2 <= h_sync_1;
 
   always @(posedge clk)
     if (~rst) v_sync_2 <= 1'b0;
-    else v_sync_2 <= v_sync_1;
+    else if (clk_en) v_sync_2 <= v_sync_1;
 
   always @(posedge clk)
     if (~rst) pixel_en_out <= 1'b0;
-    else pixel_en_out <= pixel_en_2;
+    else if (clk_en) pixel_en_out <= pixel_en_2;
 
   always @(posedge clk)
     if (~rst) h_sync_out <= 1'b0;
-    else h_sync_out <= h_sync_2;
+    else if (clk_en) h_sync_out <= h_sync_2;
 
   always @(posedge clk)
     if (~rst) v_sync_out <= 1'b0;
-    else v_sync_out <= v_sync_2;
+    else if (clk_en) v_sync_out <= v_sync_2;
 
 `ifdef DEBUG
   always @(posedge clk)

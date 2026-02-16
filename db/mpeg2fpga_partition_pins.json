@@ -4,38 +4,6 @@
 			"name" : "Top",
 			"pins" : [
 				{
-					"name" : "LED_USER",
-					"strict" : false
-				},
-				{
-					"name" : "SDIO_CLK",
-					"strict" : false
-				},
-				{
-					"name" : "LED_HDD",
-					"strict" : false
-				},
-				{
-					"name" : "LED_POWER",
-					"strict" : false
-				},
-				{
-					"name" : "SD_SPI_CS",
-					"strict" : false
-				},
-				{
-					"name" : "SD_SPI_CLK",
-					"strict" : false
-				},
-				{
-					"name" : "SD_SPI_MOSI",
-					"strict" : false
-				},
-				{
-					"name" : "HDMI_TX_VS",
-					"strict" : false
-				},
-				{
 					"name" : "HDMI_TX_DE",
 					"strict" : false
 				},
@@ -140,6 +108,18 @@
 					"strict" : false
 				},
 				{
+					"name" : "HDMI_TX_VS",
+					"strict" : false
+				},
+				{
+					"name" : "VGA_VS",
+					"strict" : false
+				},
+				{
+					"name" : "LED_USER",
+					"strict" : false
+				},
+				{
 					"name" : "VGA_R[0]",
 					"strict" : false
 				},
@@ -188,10 +168,6 @@
 					"strict" : false
 				},
 				{
-					"name" : "VGA_B[0]",
-					"strict" : false
-				},
-				{
 					"name" : "VGA_B[1]",
 					"strict" : false
 				},
@@ -212,7 +188,19 @@
 					"strict" : false
 				},
 				{
-					"name" : "VGA_VS",
+					"name" : "IO_SCL",
+					"strict" : false
+				},
+				{
+					"name" : "HDMI_SCLK",
+					"strict" : false
+				},
+				{
+					"name" : "HDMI_LRCLK",
+					"strict" : false
+				},
+				{
+					"name" : "HDMI_I2S",
 					"strict" : false
 				},
 				{
@@ -228,23 +216,35 @@
 					"strict" : false
 				},
 				{
+					"name" : "LED_POWER",
+					"strict" : false
+				},
+				{
+					"name" : "SD_SPI_CLK",
+					"strict" : false
+				},
+				{
+					"name" : "SD_SPI_MOSI",
+					"strict" : false
+				},
+				{
 					"name" : "LED[6]",
 					"strict" : false
 				},
 				{
-					"name" : "IO_SCL",
+					"name" : "VGA_B[0]",
 					"strict" : false
 				},
 				{
-					"name" : "HDMI_SCLK",
+					"name" : "SDIO_CLK",
 					"strict" : false
 				},
 				{
-					"name" : "HDMI_LRCLK",
+					"name" : "LED_HDD",
 					"strict" : false
 				},
 				{
-					"name" : "HDMI_I2S",
+					"name" : "SD_SPI_CS",
 					"strict" : false
 				},
 				{
@@ -276,27 +276,15 @@
 					"strict" : false
 				},
 				{
-					"name" : "SDIO_DAT[0]",
+					"name" : "VGA_HS",
 					"strict" : false
 				},
 				{
-					"name" : "SDIO_DAT[1]",
-					"strict" : false
-				},
-				{
-					"name" : "SDIO_DAT[2]",
-					"strict" : false
-				},
-				{
-					"name" : "SDIO_DAT[3]",
+					"name" : "USER_IO[0]",
 					"strict" : false
 				},
 				{
 					"name" : "IO_SDA",
-					"strict" : false
-				},
-				{
-					"name" : "VGA_HS",
 					"strict" : false
 				},
 				{
@@ -316,7 +304,19 @@
 					"strict" : false
 				},
 				{
-					"name" : "USER_IO[0]",
+					"name" : "SDIO_DAT[0]",
+					"strict" : false
+				},
+				{
+					"name" : "SDIO_DAT[1]",
+					"strict" : false
+				},
+				{
+					"name" : "SDIO_DAT[2]",
+					"strict" : false
+				},
+				{
+					"name" : "SDIO_DAT[3]",
 					"strict" : false
 				},
 				{
@@ -332,11 +332,11 @@
 					"strict" : false
 				},
 				{
-					"name" : "VGA_EN",
+					"name" : "FPGA_CLK2_50",
 					"strict" : false
 				},
 				{
-					"name" : "SW[2]",
+					"name" : "VGA_EN",
 					"strict" : false
 				},
 				{
@@ -344,11 +344,7 @@
 					"strict" : false
 				},
 				{
-					"name" : "FPGA_CLK2_50",
-					"strict" : false
-				},
-				{
-					"name" : "SW[1]",
+					"name" : "SW[2]",
 					"strict" : false
 				},
 				{
@@ -365,6 +361,10 @@
 				},
 				{
 					"name" : "KEY[1]",
+					"strict" : false
+				},
+				{
+					"name" : "SW[1]",
 					"strict" : false
 				},
 				{

@@ -23,8 +23,15 @@
 
 `include "timescale.v"
 
-/* max number of bytes in stream.dat mpeg2 stream */
+/* max number of bytes in mpeg2 stream - overridable via -DMAX_STREAM_LENGTH=N */
+`ifndef MAX_STREAM_LENGTH
 `define MAX_STREAM_LENGTH 4194304
+`endif
+
+/* max simulation time in ms - overridable via -DMAX_SIM_MS=N */
+`ifndef MAX_SIM_MS
+`define MAX_SIM_MS 500
+`endif
 
 /* clk at 75 MHz */
 `define CLK_PERIOD 13.3
@@ -32,8 +39,8 @@
 /* mem_clk at 125 MHz */
 `define MEMCLK_PERIOD 8.0
 
-/* dot_clk at 27 MHz */
-`define VIDCLK_PERIOD 37.0
+/* dot_clk at 108 MHz */
+`define VIDCLK_PERIOD 9.259
 
 `undef DEBUG
 `define DEBUG 1
@@ -41,6 +48,8 @@
 /* write (lxt) dumpfile of simulation run */
 `undef DEBUG_DUMP
 `define DEBUG_DUMP 1
+
+`define DIAG_ENABLE 1
 
 // write rgb+sync output to file tvout_0.ppm or tv_out_1.ppm, alternately.
 `undef DUMP_TVOUT
@@ -112,6 +121,18 @@ module testbench();
       forever #(`VIDCLK_PERIOD/2) dot_clk = ~dot_clk;
     end
 
+  reg [1:0] dot_ce_cnt;
+  reg       dot_ce;
+  always @(posedge dot_clk) begin
+    if (rst_ff[0] == 1'b0) begin
+      dot_ce_cnt <= 0;
+      dot_ce     <= 0;
+    end else begin
+      dot_ce_cnt <= dot_ce_cnt + 1;
+      dot_ce     <= (dot_ce_cnt == 2'b00);
+    end
+  end
+
   /*
    * read mpeg2 clip from file "stream.dat"
    */
@@ -182,6 +203,7 @@ module testbench();
     .clk(clk), 
     .mem_clk(mem_clk), 
     .dot_clk(dot_clk), 
+    .dot_ce(dot_ce),
     .rst(rst), 
     .stream_data(stream_data), 
     .stream_valid(stream_valid), 
@@ -388,6 +410,31 @@ module testbench();
 
 
 `endif
+
+  /*
+   * Diagnostic module for resolution debugging
+   */
+`ifdef DIAG_ENABLE
+  tb_resolution_diag diag (
+    .clk(clk),
+    .mem_clk(mem_clk),
+    .dot_clk(dot_clk),
+    .rst(rst)
+  );
+`endif
+
+  /*
+   * Simulation time limit
+   */
+  initial begin
+    #(`MAX_SIM_MS * 1_000_000);
+    $display("\n[SIM] Simulation time limit reached: %0d ms", `MAX_SIM_MS);
+    $display("[SIM] Fed %0d bytes of stream data", i);
+`ifdef DIAG_ENABLE
+    diag.print_final_report;
+`endif
+    $finish;
+  end
    
 endmodule
 /* not truncated */

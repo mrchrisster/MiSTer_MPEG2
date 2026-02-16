@@ -43,31 +43,7 @@ module sys_top
 	
 	input         HDMI_TX_INT,
 
-	//////////// SDR ///////////
-	output [12:0] SDRAM_A,
-	inout  [15:0] SDRAM_DQ,
-	output        SDRAM_DQML,
-	output        SDRAM_DQMH,
-	output        SDRAM_nWE,
-	output        SDRAM_nCAS,
-	output        SDRAM_nRAS,
-	output        SDRAM_nCS,
-	output  [1:0] SDRAM_BA,
-	output        SDRAM_CLK,
-	output        SDRAM_CKE,
 
-`ifdef MISTER_DUAL_SDRAM
-	////////// SDR #2 //////////
-	output [12:0] SDRAM2_A,
-	inout  [15:0] SDRAM2_DQ,
-	output        SDRAM2_nWE,
-	output        SDRAM2_nCAS,
-	output        SDRAM2_nRAS,
-	output        SDRAM2_nCS,
-	output  [1:0] SDRAM2_BA,
-	output        SDRAM2_CLK,
-
-`else
 	//////////// VGA ///////////
 	output  [5:0] VGA_R,
 	output  [5:0] VGA_G,
@@ -93,7 +69,6 @@ module sys_top
 	input         BTN_USER,
 	input         BTN_OSD,
 	input         BTN_RESET,
-`endif
 
 	////////// I/O ALT /////////
 	output        SD_SPI_CS,
@@ -1829,29 +1804,7 @@ emu emu
 	.DDRAM_BE(ram_byteenable),
 	.DDRAM_WE(ram_write),
 
-	.SDRAM_DQ(SDRAM_DQ),
-	.SDRAM_A(SDRAM_A),
-	.SDRAM_DQML(SDRAM_DQML),
-	.SDRAM_DQMH(SDRAM_DQMH),
-	.SDRAM_BA(SDRAM_BA),
-	.SDRAM_nCS(SDRAM_nCS),
-	.SDRAM_nWE(SDRAM_nWE),
-	.SDRAM_nRAS(SDRAM_nRAS),
-	.SDRAM_nCAS(SDRAM_nCAS),
-	.SDRAM_CLK(SDRAM_CLK),
-	.SDRAM_CKE(SDRAM_CKE),
 
-`ifdef MISTER_DUAL_SDRAM
-	.SDRAM2_DQ(SDRAM2_DQ),
-	.SDRAM2_A(SDRAM2_A),
-	.SDRAM2_BA(SDRAM2_BA),
-	.SDRAM2_nCS(SDRAM2_nCS),
-	.SDRAM2_nWE(SDRAM2_nWE),
-	.SDRAM2_nRAS(SDRAM2_nRAS),
-	.SDRAM2_nCAS(SDRAM2_nCAS),
-	.SDRAM2_CLK(SDRAM2_CLK),
-	.SDRAM2_EN(io_dig),
-`endif
 
 	.BUTTONS(btn),
 	.OSD_STATUS(osd_status),
