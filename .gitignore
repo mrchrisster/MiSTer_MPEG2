@@ -8,7 +8,7 @@ prior-working-config/
 ao486_MiSTer-master/
 incremental_db/
 TSConf_MiSTer-master/
-releases/old/
+releases-old/
 bench/
 *.ppm
 *.lxt
