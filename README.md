@@ -2,42 +2,7 @@
 
 This is a bare-metal, hardware-level MPEG-2 video core.
 
-## Running the Simulation Testbench
 
-To run the software testbench:
-
-1. Download a sample video
-
-```bash
-cd tools/streams
-wget ftp://ftp.tek.com/tv/test/streams/Element/MPEG-Video/625/susi_015.m2v
-mv susi_015.m2v stream-susi.mpg
-```
-
-2. Install Icarus verilog
-
-```bash
-sudo apt-get install iverilog
-```
-
-3. Run testbench
-
-```bash
-cd bench/iverilog
-```
-Verify top of Makefile looks like this:
-```makefile
-STREAM = ../../tools/streams/stream-susi.mpg
-MODELINE = MODELINE_SIF
-```
-
-```bash
-make clean test
-```
-
-The directory ought to fill with `.ppm` frame output files.
-
----
 
 ## MiSTer FPGA Port
 
