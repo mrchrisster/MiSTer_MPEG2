@@ -7,6 +7,8 @@ mpeg2fpga-orig/
 prior-working-config/
 ao486_MiSTer-master/
 incremental_db/
+TSConf_MiSTer-master/
+releases/old/
 bench/
 *.ppm
 *.lxt
