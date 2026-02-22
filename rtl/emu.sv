@@ -147,7 +147,10 @@ sys_pll sys_pll (
     .locked   (locked)
 );
 
-// Memory clock drives DDR3 interface
+// DDR3 interface clock: use clk_mem (108 MHz).
+// This eliminates the CDC between the f2sdram bridge and our FSM since the
+// MPEG2 memory request FIFOs are internally driven by clk_mem.
+wire clk_100m_hps = HPS_BUS[43];  // 100 MHz from HPS
 assign DDRAM_CLK = clk_mem;
 
 // Active-low reset for the mpeg2video core
@@ -157,13 +160,15 @@ assign DDRAM_CLK = clk_mem;
 wire watchdog_rst;
 wire reset_n = locked & ~RESET;
 
-// 108 MHz / 4 = 27 MHz pixel clock enable
+// 108 MHz / 4 = 27 MHz pixel clock enable for internal modules
 reg [1:0] ce_cnt;
 always @(posedge clk_mem) ce_cnt <= ce_cnt + 1'b1;
 wire ce_pixel = (ce_cnt == 2'b00);
 
-assign CLK_VIDEO = clk_mem;
-assign CE_PIXEL  = ce_pixel;
+// The MiSTer HDMI/VGA PHY natively clocks at CLK_VIDEO frequency. 
+// For NTSC 480i/p video, this must be exactly 27.0 MHz.
+assign CLK_VIDEO = clk_sys;  // 27 MHz
+assign CE_PIXEL  = 1'b1;     // Fully utilized 27 MHz clock
 
 // =========================================================================
 // HPS IO — OSD menu and file loading
@@ -309,17 +314,19 @@ wire        core_sync_rst;
 wire        core_vbw_almost_full;
 wire       core_pixel_en;
 wire [3:0]  shim_debug_state;
+wire [1:0]  shim_debug_saved_cmd;
 wire        shim_debug_sdram_busy;
 wire        shim_debug_sdram_ack;
 wire [15:0] shim_debug_rd_count;
 wire [15:0] shim_debug_wr_count;
+wire [15:0] shim_debug_rsp_count;
+wire [15:0] shim_debug_read_pend_cycles;
 
 mpeg2video mpeg2video_inst (
-    .clk        (clk_sys),
-    .mem_clk    (clk_mem),
-    .dot_clk    (clk_mem),
-    .dot_ce     (ce_pixel),
-  // 25.175 MHz video output clock
+    .clk        (clk_sys),   // 27 MHz — matches prior-working-config; 4× lower mem request rate
+    .mem_clk    (clk_mem),   // 108 MHz — FIFO: wr=27MHz rd=108MHz, read-faster safe CDC
+    .dot_clk    (clk_sys),   // 27MHz native dot clock (cleanly drives MiSTer HDMI PHY)
+    .dot_ce     (1'b1),      // No clock enable needed when using native 27MHz
     .rst        (reset_n),
 
     .stream_data  (stream_data),
@@ -331,7 +338,7 @@ mpeg2video mpeg2video_inst (
     .reg_rd_en  (1'b0),
 
     .busy       (core_busy),
-    .error      (),
+    .error      (vld_err),
     .interrupt  (),
     .watchdog_rst (watchdog_rst),
 
@@ -369,8 +376,9 @@ mpeg2video mpeg2video_inst (
 // Memory Shim: 64-bit core <-> 64-bit DDR3
 // =========================================================================
 mem_shim mem_shim_inst (
-    .clk              (clk_mem),
-    .rst_n            (reset_n),
+    .clk              (clk_mem),  // 108 MHz — same domain as FIFOs and f2sdram bridge
+    .rst_n            (reset_n),  // Soft reset — resets FSM and FIFOs
+    .hard_rst_n       (locked & ~RESET), // Hard reset — resets hardware tracking counters
 
     .mem_req_rd_cmd   (core_mem_cmd),
     .mem_req_rd_addr  (core_mem_addr),
@@ -394,102 +402,59 @@ mem_shim mem_shim_inst (
     .ddr3_waitrequest   (DDRAM_BUSY),
 
     .debug_state      (shim_debug_state),
+    .debug_saved_cmd  (shim_debug_saved_cmd),
     .debug_sdram_busy (shim_debug_sdram_busy),
     .debug_sdram_ack  (shim_debug_sdram_ack),
     .debug_rd_count   (shim_debug_rd_count),
-    .debug_wr_count   (shim_debug_wr_count)
+    .debug_wr_count   (shim_debug_wr_count),
+    .debug_rsp_count  (shim_debug_rsp_count),
+    .debug_read_pend_cycles (shim_debug_read_pend_cycles)
 );
 
 // =========================================================================
-// Fallback VGA Timing Generator (640x480 @ 60Hz)
+// Core Video Active Detection (for debug / uart_debug only)
 // =========================================================================
-// The MPEG2 core's syncgen is tied to the decoder pipeline and may not
-// produce valid timing until a bitstream is being decoded (syncgen_rst
-// stays asserted via the regfile during hard reset). Without valid
-// VGA_HS/VGA_VS/VGA_DE, the MiSTer ascal scaler has no input and the
-// HDMI transmitter outputs nothing ("Looking for signal").
-//
-// This fallback generator runs on clk_vid (25.175 MHz)
-// and produces standard VGA 640x480 @ 60Hz timing with a white screen.
-// Once the core's syncgen starts producing valid vsync edges, we
-// switch the output mux to the core's video.
-//
-// Standard VGA 640x480 @ 60Hz timing (25.175 MHz pixel clock):
-//   H: 640 visible, total 800 (HFP=16, HS=96, HBP=48)
-//   V: 480 visible, total 525 (VFP=10, VS=2, VBP=33)
+// Tracks vsync edges to know when the core's syncgen is running.
+// No longer used for a video mux — VGA is wired directly from the core.
 
-reg [9:0] fb_hcnt = 0;  // 0..799
-reg [9:0] fb_vcnt = 0;  // 0..524
-reg       fb_hs, fb_vs, fb_de;
+reg [2:0]  core_vs_edge_cnt = 0;
+reg        core_vs_prev = 0;
+wire       core_video_active = (core_vs_edge_cnt >= 3'd3);
+reg [15:0] core_frame_cnt = 0;  // free-running frame counter (all vsync rising edges)
 
-always @(posedge clk_vid or negedge reset_n) begin
-    if (!reset_n) begin
-        fb_hcnt <= 0;
-        fb_vcnt <= 0;
-        fb_hs   <= 1'b0;
-        fb_vs   <= 1'b0;
-        fb_de   <= 1'b0;
-    end else begin
-        // Horizontal counter
-        if (fb_hcnt == 10'd799) begin
-            fb_hcnt <= 0;
-            // Vertical counter
-            if (fb_vcnt == 10'd524)
-                fb_vcnt <= 0;
-            else
-                fb_vcnt <= fb_vcnt + 1'd1;
-        end else begin
-            fb_hcnt <= fb_hcnt + 1'd1;
-        end
-
-        // Horizontal sync: active high (matching core's syncgen convention)
-        // Pixels 656..751
-        fb_hs <= (fb_hcnt >= 10'd656 && fb_hcnt <= 10'd751);
-
-        // Vertical sync: active high (matching core's syncgen convention)
-        // Lines 490..491
-        fb_vs <= (fb_vcnt >= 10'd490 && fb_vcnt <= 10'd491);
-
-        // Display enable: active area 0..639 x 0..479
-        fb_de <= (fb_hcnt < 10'd640) && (fb_vcnt < 10'd480);
-    end
-end
-
-// =========================================================================
-// Core Video Active Detection
-// =========================================================================
-// Detect when the MPEG2 core's syncgen is producing valid video by
-// watching for vsync edges. After seeing a few vsync edges, we know
-// the core is generating proper timing and can switch to its output.
-
-reg [2:0] core_vs_edge_cnt = 0;
-reg       core_vs_prev = 0;
-wire      core_video_active = (core_vs_edge_cnt >= 3'd3);
-
-always @(posedge clk_vid or negedge reset_n) begin
+// core_v_sync is in clk_mem domain (dot_clk=clk_mem), so sample here on clk_mem
+always @(posedge clk_mem or negedge reset_n) begin
     if (!reset_n) begin
         core_vs_edge_cnt <= 0;
         core_vs_prev     <= 0;
+        core_frame_cnt   <= 0;
     end else begin
         core_vs_prev <= core_v_sync;
         // Count rising edges of core vsync
         if (~core_vs_prev & core_v_sync & ~core_video_active)
             core_vs_edge_cnt <= core_vs_edge_cnt + 1'd1;
+        // Free-running frame counter (all vsync edges, wraps at 65535)
+        if (~core_vs_prev & core_v_sync)
+            core_frame_cnt <= core_frame_cnt + 1'd1;
     end
 end
 
 // =========================================================================
-// Video Output Mux
+// Video Output — direct from MPEG2 core (no fallback mux)
 // =========================================================================
-// Use the fallback timing generator until the core starts producing
-// valid video, then switch to the core's output.
+// The fallback VGA generator ran on clk_vid (25.175 MHz) but CLK_VIDEO =
+// clk_mem (108 MHz). Sampling clk_vid signals on clk_mem caused metastable
+// sync signals that the MiSTer scaler could never lock to → permanent black.
+// The MPEG2 core's outputs are already on clk_mem (dot_clk=clk_mem), so
+// wiring them directly is clean. Before a stream is decoded, the core
+// outputs black (Y=16, Cb=Cr=128), which is fine — "no signal" until play.
 
-assign VGA_R  = core_video_active ? core_r       : 8'hFF; // Debug: White fallback
-assign VGA_G  = core_video_active ? core_g       : 8'hFF; // Debug: White fallback
-assign VGA_B  = core_video_active ? core_b       : 8'hFF; // Debug: White fallback
-assign VGA_HS = core_video_active ? core_h_sync  : fb_hs;
-assign VGA_VS = core_video_active ? core_v_sync  : fb_vs;
-assign VGA_DE = core_video_active ? core_pixel_en : fb_de;
+assign VGA_R  = core_r;
+assign VGA_G  = core_g;
+assign VGA_B  = core_b;
+assign VGA_HS = core_h_sync;
+assign VGA_VS = core_v_sync;
+assign VGA_DE = core_pixel_en;
 
 
 uart_debug debug_inst (
@@ -510,7 +475,8 @@ uart_debug debug_inst (
     .mem_req_valid(core_mem_valid),
     .mem_res_almost_full(shim_mem_almost_full),
     // DDR3 debug (mapped through mem_shim debug outputs)
-    .shim_state(shim_debug_state),          // M: 0=IDLE 1=WR_WAIT 2=RD_WAIT
+    .shim_state(shim_debug_state),          // M: {cmd[1:0],saved_valid,state}
+    .shim_saved_cmd(shim_debug_saved_cmd),  // SC: skid buffer cmd type
     .sdram_busy(shim_debug_sdram_busy),     // U: ddr3_waitrequest
     .sdram_ack(shim_debug_sdram_ack),       // K: ddr3 transaction accepted
     // MPG streamer debug
@@ -523,7 +489,14 @@ uart_debug debug_inst (
     .streamer_next_lba(streamer_next_lba),
     // Memory read/write counters
     .mem_rd_count(shim_debug_rd_count),     // P: DDR3 read completions
-    .mem_wr_count(shim_debug_wr_count)      // W: DDR3 write completions
+    .mem_wr_count(shim_debug_wr_count),     // W: DDR3 write completions
+    .mem_rsp_count(shim_debug_rsp_count),   // RP: readdatavalid pulses received
+    .mem_pend_cycles(shim_debug_read_pend_cycles), // PC: cycles in READ_PEND
+    .hdmi_lock(vld_err),               // G: VLD decoder error
+    .watchdog_rst(watchdog_rst),       // O: decoder watchdog fired (latched)
+    .core_vs_edge_cnt(core_vs_edge_cnt), // N: vsync edges seen before active
+    .core_frame_cnt(core_frame_cnt),   // FC: free-running frame counter
+    .mem_addr(DDRAM_ADDR)
 );
 
 assign CLK_SYS = clk_sys;

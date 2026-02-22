@@ -16,6 +16,7 @@ module uart_debug (
     input        mem_req_valid,
     input        mem_res_almost_full,  // Response FIFO backpressure
     input [3:0]  shim_state,           // Memory shim state machine
+    input [1:0]  shim_saved_cmd,       // Skid buffer cmd type (0=none 2=RD 3=WR)
     input        sdram_busy,           // SDRAM controller busy signal
     input        sdram_ack,            // SDRAM controller ack signal
     // MPG streamer debug
@@ -29,11 +30,15 @@ module uart_debug (
     // Memory read/write counters
     input [15:0] mem_rd_count,         // 64-bit read completions
     input [15:0] mem_wr_count,         // 64-bit write completions
+    input [15:0] mem_rsp_count,        // readdatavalid pulse count
+    input [15:0] mem_pend_cycles,      // cycles stuck in S_READ_PEND
     // HDMI debug
     input        hdmi_lock,
-    input        hdmi_vs,
-    input        hdmi_de,
-    input        hdmi_hs,
+    // Decoder health
+    input        watchdog_rst,          // Watchdog fired (latched until next print)
+    input  [2:0] core_vs_edge_cnt,      // Vsync edges seen (0-7, saturates at 7)
+    input [15:0] core_frame_cnt,        // Free-running frame counter (all vsync edges)
+    input [28:0] mem_addr,
     output tx_pin
 );
 
@@ -67,25 +72,34 @@ module uart_debug (
     reg [8:0] init_cnt_r;
     reg sync_rst_r, vbw_almost_full_r, mem_req_en_r, mem_req_valid_r, mem_res_almost_full_r;
     reg [3:0] shim_state_r;
+    reg [1:0] shim_saved_cmd_r;
     reg sdram_busy_r, sdram_ack_r;
     reg streamer_active_r, streamer_sd_rd_r, streamer_sd_ack_r, streamer_has_data_r;
     reg [15:0] streamer_file_size_r, streamer_total_sectors_r, streamer_next_lba_r;
     reg [15:0] mem_rd_count_r, mem_wr_count_r;
-    reg hdmi_lock_r, hdmi_vs_r, hdmi_de_r, hdmi_hs_r;
+    reg [15:0] mem_rsp_count_r, mem_pend_cycles_r;
+    reg hdmi_lock_r;
+    reg watchdog_r, watchdog_latch;
+    reg [2:0]  core_vs_edge_cnt_r;
+    reg [15:0] core_frame_cnt_r;
+    reg [28:0] mem_addr_r;
 
     // State machine
+    // (watchdog_latch is driven entirely inside the main always block below)
     localparam S_IDLE = 0;
     localparam S_PRINT = 1;
     localparam S_WAIT_TX = 2; // Wait for ready to go low (ack) then high (done)
-    
-    reg [3:0] state = S_IDLE;
-    reg [6:0] char_idx = 0;  // 7 bits to hold indices 0-103
 
-    // Message Format: "L:x A:x B:x V:x X:xxx Y:xxx I:xxx S:x F:x E:x Q:x R:x M:x U:x K:x T:x D:x C:x H:x W:xxxx P:xxxx J:xxxx\r\n"
+    reg [3:0] state = S_IDLE;
+    reg [7:0] char_idx = 0;  // 8 bits to hold indices 0-160
+
+    // Message Format: "L:x A:x B:x V:x X:xxx Y:xxx I:xxx S:x F:x E:x Q:x R:x M:x U:x K:x T:x D:x C:x H:x W:xxxx P:xxxx J:xxxx Z:xxxx @:xxxxxxxx G:x O:x N:x SC:x FC:xxxx RP:xxxx PC:xxxx\r\n"
     // I=init_cnt S=sync_rst F=vbw_almost_full E=mem_req_en Q=mem_req_valid R=mem_res_almost_full
-    // M=shim_state U=sdram_busy K=sdram_ack
+    // M=shim_state (Hex: [3:2]=Cmd 1=Saved 0=State) U=sdram_busy K=sdram_ack
     // T=sTreamer_active D=sd_rD C=sd_aCk H=cache_Has_data
     // W=mem_Writes P=mem_reads(P) J=next_lba(Jump)
+    // G=vld_err O=watchdOg_rst(latched) N=vsyNc_edge_count(0-7)
+    // SC=Saved Cmd type (0=none 2=READ 3=WRITE) FC=Frame Counter (vsync edges)
     
     function [7:0] to_hex;
         input [3:0] val;
@@ -96,10 +110,14 @@ module uart_debug (
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            state <= S_IDLE;
-            tx_valid <= 0;
-            char_idx <= 0;
+            state         <= S_IDLE;
+            tx_valid      <= 0;
+            char_idx      <= 0;
+            watchdog_latch <= 0;
         end else begin
+            // Watchdog latch: set when watchdog_rst fires (active LOW pulse); cleared at print capture
+            if (!watchdog_rst) watchdog_latch <= 1;
+
             case (state)
                 S_IDLE: begin
                     tx_valid <= 0;
@@ -117,6 +135,7 @@ module uart_debug (
                         mem_req_valid_r <= mem_req_valid;
                         mem_res_almost_full_r <= mem_res_almost_full;
                         shim_state_r <= shim_state;
+                        shim_saved_cmd_r <= shim_saved_cmd;
                         sdram_busy_r <= sdram_busy;
                         sdram_ack_r <= sdram_ack;
                         streamer_active_r <= streamer_active;
@@ -128,10 +147,14 @@ module uart_debug (
                         streamer_next_lba_r <= streamer_next_lba;
                         mem_rd_count_r <= mem_rd_count;
                         mem_wr_count_r <= mem_wr_count;
+                        mem_rsp_count_r <= mem_rsp_count;
+                        mem_pend_cycles_r <= mem_pend_cycles;
                         hdmi_lock_r <= hdmi_lock;
-                        hdmi_vs_r <= hdmi_vs;
-                        hdmi_de_r <= hdmi_de;
-                        hdmi_hs_r <= hdmi_hs;
+                        watchdog_r     <= watchdog_latch | !watchdog_rst; // include same-cycle fires
+                        if (watchdog_rst) watchdog_latch <= 0; // clear only when NOT firing (watchdog_rst HIGH = not fired)
+                        core_vs_edge_cnt_r <= core_vs_edge_cnt;
+                        core_frame_cnt_r   <= core_frame_cnt;
+                        mem_addr_r <= mem_addr;
                         char_idx <= 0;
                         state <= S_PRINT;
                     end
@@ -245,11 +268,66 @@ module uart_debug (
                             100: tx_data <= to_hex(streamer_next_lba_r[7:4]);
                             101: tx_data <= to_hex(streamer_next_lba_r[3:0]);
                             102: tx_data <= " ";
-                            103: tx_data <= "Z"; // HDMI debug hex: lock, vs, de, hs
+                            103: tx_data <= "Z"; // Total Sectors
                             104: tx_data <= ":";
-                            105: tx_data <= to_hex({hdmi_lock_r, hdmi_vs_r, hdmi_de_r, hdmi_hs_r});
-                            106: tx_data <= "\r";
-                            107: tx_data <= "\n";
+                            105: tx_data <= to_hex(streamer_total_sectors_r[15:12]);
+                            106: tx_data <= to_hex(streamer_total_sectors_r[11:8]);
+                            107: tx_data <= to_hex(streamer_total_sectors_r[7:4]);
+                            108: tx_data <= to_hex(streamer_total_sectors_r[3:0]);
+                            109: tx_data <= " ";
+                            110: tx_data <= "@";
+                            111: tx_data <= ":";
+                            112: tx_data <= to_hex({3'b0, mem_addr_r[28]});
+                            113: tx_data <= to_hex(mem_addr_r[27:24]);
+                            114: tx_data <= to_hex(mem_addr_r[23:20]);
+                            115: tx_data <= to_hex(mem_addr_r[19:16]);
+                            116: tx_data <= to_hex(mem_addr_r[15:12]);
+                            117: tx_data <= to_hex(mem_addr_r[11:8]);
+                            118: tx_data <= to_hex(mem_addr_r[7:4]);
+                            119: tx_data <= to_hex(mem_addr_r[3:0]);
+                            120: tx_data <= " ";
+                            121: tx_data <= "G"; // General Error / VLD Error
+                            122: tx_data <= ":";
+                            123: tx_data <= hdmi_lock_r ? "1" : "0";
+                            124: tx_data <= " ";
+                            125: tx_data <= "O"; // watchdOg fired (latched)
+                            126: tx_data <= ":";
+                            127: tx_data <= watchdog_r ? "1" : "0";
+                            128: tx_data <= " ";
+                            129: tx_data <= "N"; // vsyNc edge count (0-7)
+                            130: tx_data <= ":";
+                            131: tx_data <= to_hex({1'b0, core_vs_edge_cnt_r});
+                            132: tx_data <= " ";
+                            133: tx_data <= "S"; // Saved Cmd type in skid buffer
+                            134: tx_data <= "C";
+                            135: tx_data <= ":";
+                            136: tx_data <= to_hex({2'b0, shim_saved_cmd_r}); // 0=none/NOOP 2=READ 3=WRITE
+                            137: tx_data <= " ";
+                            138: tx_data <= "F"; // Frame Counter
+                            139: tx_data <= "C";
+                            140: tx_data <= ":";
+                            141: tx_data <= to_hex(core_frame_cnt_r[15:12]);
+                            142: tx_data <= to_hex(core_frame_cnt_r[11:8]);
+                            143: tx_data <= to_hex(core_frame_cnt_r[7:4]);
+                            144: tx_data <= to_hex(core_frame_cnt_r[3:0]);
+                            145: tx_data <= " ";
+                            146: tx_data <= "R"; // Response count (RP)
+                            147: tx_data <= "P";
+                            148: tx_data <= ":";
+                            149: tx_data <= to_hex(mem_rsp_count_r[15:12]);
+                            150: tx_data <= to_hex(mem_rsp_count_r[11:8]);
+                            151: tx_data <= to_hex(mem_rsp_count_r[7:4]);
+                            152: tx_data <= to_hex(mem_rsp_count_r[3:0]);
+                            153: tx_data <= " ";
+                            154: tx_data <= "P"; // Pend Cycles (PC)
+                            155: tx_data <= "C";
+                            156: tx_data <= ":";
+                            157: tx_data <= to_hex(mem_pend_cycles_r[15:12]);
+                            158: tx_data <= to_hex(mem_pend_cycles_r[11:8]);
+                            159: tx_data <= to_hex(mem_pend_cycles_r[7:4]);
+                            160: tx_data <= to_hex(mem_pend_cycles_r[3:0]);
+                            161: tx_data <= "\r";
+                            162: tx_data <= "\n";
                             default: begin
                                 state <= S_IDLE;
                                 tx_valid <= 0;

@@ -116,6 +116,10 @@
 					"strict" : false
 				},
 				{
+					"name" : "LED[1]",
+					"strict" : false
+				},
+				{
 					"name" : "LED_USER",
 					"strict" : false
 				},
@@ -168,27 +172,11 @@
 					"strict" : false
 				},
 				{
-					"name" : "VGA_B[1]",
-					"strict" : false
-				},
-				{
-					"name" : "VGA_B[2]",
-					"strict" : false
-				},
-				{
-					"name" : "VGA_B[3]",
-					"strict" : false
-				},
-				{
 					"name" : "VGA_B[4]",
 					"strict" : false
 				},
 				{
 					"name" : "VGA_B[5]",
-					"strict" : false
-				},
-				{
-					"name" : "IO_SCL",
 					"strict" : false
 				},
 				{
@@ -204,6 +192,22 @@
 					"strict" : false
 				},
 				{
+					"name" : "VGA_B[0]",
+					"strict" : false
+				},
+				{
+					"name" : "VGA_B[1]",
+					"strict" : false
+				},
+				{
+					"name" : "VGA_B[2]",
+					"strict" : false
+				},
+				{
+					"name" : "VGA_B[3]",
+					"strict" : false
+				},
+				{
 					"name" : "AUDIO_L",
 					"strict" : false
 				},
@@ -216,7 +220,19 @@
 					"strict" : false
 				},
 				{
+					"name" : "SDIO_CLK",
+					"strict" : false
+				},
+				{
+					"name" : "LED_HDD",
+					"strict" : false
+				},
+				{
 					"name" : "LED_POWER",
+					"strict" : false
+				},
+				{
+					"name" : "SD_SPI_CS",
 					"strict" : false
 				},
 				{
@@ -228,31 +244,11 @@
 					"strict" : false
 				},
 				{
-					"name" : "LED[6]",
-					"strict" : false
-				},
-				{
-					"name" : "VGA_B[0]",
-					"strict" : false
-				},
-				{
-					"name" : "SDIO_CLK",
-					"strict" : false
-				},
-				{
-					"name" : "LED_HDD",
-					"strict" : false
-				},
-				{
-					"name" : "SD_SPI_CS",
+					"name" : "IO_SCL",
 					"strict" : false
 				},
 				{
 					"name" : "LED[0]",
-					"strict" : false
-				},
-				{
-					"name" : "LED[1]",
 					"strict" : false
 				},
 				{
@@ -276,31 +272,11 @@
 					"strict" : false
 				},
 				{
+					"name" : "LED[6]",
+					"strict" : false
+				},
+				{
 					"name" : "VGA_HS",
-					"strict" : false
-				},
-				{
-					"name" : "USER_IO[0]",
-					"strict" : false
-				},
-				{
-					"name" : "IO_SDA",
-					"strict" : false
-				},
-				{
-					"name" : "SDCD_SPDIF",
-					"strict" : false
-				},
-				{
-					"name" : "USER_IO[2]",
-					"strict" : false
-				},
-				{
-					"name" : "USER_IO[4]",
-					"strict" : false
-				},
-				{
-					"name" : "USER_IO[5]",
 					"strict" : false
 				},
 				{
@@ -324,6 +300,30 @@
 					"strict" : false
 				},
 				{
+					"name" : "SDCD_SPDIF",
+					"strict" : false
+				},
+				{
+					"name" : "IO_SDA",
+					"strict" : false
+				},
+				{
+					"name" : "USER_IO[0]",
+					"strict" : false
+				},
+				{
+					"name" : "USER_IO[2]",
+					"strict" : false
+				},
+				{
+					"name" : "USER_IO[4]",
+					"strict" : false
+				},
+				{
+					"name" : "USER_IO[5]",
+					"strict" : false
+				},
+				{
 					"name" : "SW[3]",
 					"strict" : false
 				},
@@ -332,11 +332,11 @@
 					"strict" : false
 				},
 				{
-					"name" : "FPGA_CLK2_50",
+					"name" : "VGA_EN",
 					"strict" : false
 				},
 				{
-					"name" : "VGA_EN",
+					"name" : "FPGA_CLK2_50",
 					"strict" : false
 				},
 				{

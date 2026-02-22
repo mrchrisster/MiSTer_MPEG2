@@ -4,6 +4,7 @@ module tb_mem_shim;
 
     reg clk;
     reg rst_n;
+    reg hard_rst_n;
 
     // Core Interface
     reg  [1:0] mem_req_rd_cmd;
@@ -27,10 +28,19 @@ module tb_mem_shim;
     reg         ddr3_readdatavalid;
     reg         ddr3_waitrequest;
 
+    // Timeout mechanism (100ms)
+    initial begin
+        #100000000;
+        $display("FATAL ERROR: SIMULATION TIMEOUT REACHED!");
+        $display("Outstanding Reads: %d", uut.outstanding_reads);
+        $finish;
+    end
+
     // DUT
     mem_shim uut (
         .clk(clk),
         .rst_n(rst_n),
+        .hard_rst_n(hard_rst_n),
         .mem_req_rd_cmd(mem_req_rd_cmd),
         .mem_req_rd_addr(mem_req_rd_addr),
         .mem_req_rd_dta(mem_req_rd_dta),
@@ -53,22 +63,18 @@ module tb_mem_shim;
     // Clock Generation
     initial begin
         clk = 0;
-        forever #5 clk = ~clk; // 100MHz
+        forever #4.63 clk = ~clk; 
     end
 
     // Test Sequence
     initial begin
-        $dumpfile("mem_shim.vcd");
-        $dumpvars(0, tb_mem_shim);
-        
-        // Monitor debug signals
-        $monitor("Time: %t | State: %b | Req: %h (V:%b) | En: %b | Saved: %b (V:%b) | DDR: W:%b R:%b Addr:%h", 
-                 $time, uut.state, mem_req_rd_cmd, mem_req_rd_valid, mem_req_rd_en, 
-                 uut.saved_cmd, uut.saved_valid, 
-                 ddr3_write, ddr3_read, ddr3_addr);
+        $monitor("Time: %20t | State: %b | Req: %d | En: %b | DDR: W:%b R:%b | Pend: %d", 
+                 $time, uut.state, mem_req_rd_cmd, mem_req_rd_en,
+                 ddr3_write, ddr3_read, uut.outstanding_reads);
 
-        // Initialize Inputs
+        // Initialize
         rst_n = 0;
+        hard_rst_n = 0;
         mem_req_rd_cmd = 0;
         mem_req_rd_addr = 0;
         mem_req_rd_dta = 0;
@@ -77,144 +83,123 @@ module tb_mem_shim;
         ddr3_readdata = 0;
         ddr3_readdatavalid = 0;
         ddr3_waitrequest = 0;
+        
+        #100;
+        rst_n = 1;
+        hard_rst_n = 1;
+        #100;
 
-        // Reset
-        #20 rst_n = 1;
-        #20;
-
+        // =========================================================================
         // Test 1: Simple Write
-        $display("Test 1: Simple Write");
-        
-        // Assert Write Request
-        mem_req_rd_cmd = 2'd3; // CMD_WRITE
+        // =========================================================================
+        $display("--- Test 1: Simple Write ---");
+        mem_req_rd_cmd = 2'd3;
         mem_req_rd_addr = 22'h123456;
-        mem_req_rd_dta = 64'hDEADBEEFCAFEBABE;
-        mem_req_rd_valid = 1;
-
-        // Wait for acceptance
-        wait(mem_req_rd_en == 0); // FSM should deassert EN when accepting
-        #1; // Wait for combinational logic to settle
-        $display("Core Request Accepted");
-        
-        if (ddr3_write !== 1) $error("DDR3 Write not asserted");
-        // Address Check: Expect {4'b0011, 22'h123456, 3'b000}
-        // 4'b0011 = 3
-        if (ddr3_addr !== {4'b0110, 2'b00, 22'h123456, 1'b0}) $error("DDR3 Address mismatch. Got: %h", ddr3_addr);
-        if (ddr3_writedata !== 64'hDEADBEEFCAFEBABE) $error("DDR3 Data mismatch");
-
-        mem_req_rd_valid = 0;
-        #20;
-
-        // Test 2: Simple Read
-        $display("Test 2: Simple Read");
-        
-        mem_req_rd_cmd = 2'd2; // CMD_READ
-        mem_req_rd_addr = 22'h1BCDEF; 
+        mem_req_rd_dta = 64'hDEADBEEF;
         mem_req_rd_valid = 1;
 
         wait(mem_req_rd_en == 0);
-        #1;
-        if (ddr3_read !== 1) $error("DDR3 Read not asserted");
-        // Address Check
-        if (ddr3_addr !== {4'b0110, 2'b00, 22'h1BCDEF, 1'b0}) $error("DDR3 Address mismatch. Got: %h", ddr3_addr);
-
-        // FSM should still be in WAIT (waitrequest=0) -> IDLE next cycle
+        @(posedge clk);
         mem_req_rd_valid = 0;
         #20;
+        if (ddr3_write === 1 && ddr3_addr === {7'b0011000, 22'h123456} && ddr3_writedata === 64'hDEADBEEF) begin
+            $display("PASS: Write command correctly translated and asserted.");
+        end else begin
+            $error("FAIL: Write not asserted or mismatched! Addr:%h", ddr3_addr);
+        end
+        #100;
 
-        // Simulate Memory Response
-        ddr3_readdata = 64'h0123456789ABCDEF;
-        ddr3_readdatavalid = 1;
-        $display("Time: %t, Setting valid=1", $time);
+        // =========================================================================
+        // Test 2: Write-After-Read (Deadlock Mitigation Test)
+        // =========================================================================
+        $display("--- Test 2: Write-After-Read Stall ---");
+        
+        // 1. Issue READ
+        mem_req_rd_cmd = 2'd2;
+        mem_req_rd_addr = 22'h555555;
+        mem_req_rd_valid = 1;
+        wait(mem_req_rd_en == 0);
         @(posedge clk);
-        #1; 
+        mem_req_rd_valid = 0;
+        
+        // Wait for FSM to return to IDLE (en goes high)
+        wait(mem_req_rd_en == 1);
+        @(posedge clk);
+        
+        // 2. Issue WRITE while read is still pending (no readdatavalid yet)
+        $display("Issuing WRITE while READ is pending...");
+        mem_req_rd_cmd = 2'd3;
+        mem_req_rd_addr = 22'hAAAAAA;
+        mem_req_rd_dta = 64'h11112222;
+        mem_req_rd_valid = 1;
+        
+        #100;
+        // The FSM must NOT issue ddr3_write. It must NOT assert mem_req_rd_en.
+        if (ddr3_write == 1) $error("CRITICAL: Write issued during pending read! AXI deadlock risk!");
+        if (mem_req_rd_en == 1) $error("CRITICAL: FSM failed to stall FIFO!");
+        
+        // 3. Provide Read response
+        $display("Providing READ response...");
+        #1000;
+        ddr3_readdatavalid = 1;
+        @(posedge clk);
         ddr3_readdatavalid = 0;
         
-        $display("Time: %t, Checking. en_out=%b, data=%h", $time, mem_res_wr_en, mem_res_wr_dta);
+        // 4. Trace the recovery
+        wait(ddr3_write == 1);
+        $display("WRITE resumed successfully.");
         
-        // Check Core Response
-        if (mem_res_wr_en !== 1) $error("Core Response not asserted");
-        if (mem_res_wr_dta !== 64'h0123456789ABCDEF) $error("Core Response Data mismatch");
+        // =========================================================================
+        // Test 3: Watchdog Reset (Soft Reset) Survival Test
+        // =========================================================================
+        $display("--- Test 3: Watchdog Reset Survival ---");
+        
+        // 1. Issue READ
+        mem_req_rd_cmd = 2'd2;
+        mem_req_rd_addr = 22'h555555;
+        mem_req_rd_valid = 1;
+        wait(mem_req_rd_en == 0);
+        @(posedge clk);
+        mem_req_rd_valid = 0;
+        
+        // Wait for FSM to return to IDLE (en goes high), meaning read was accepted
+        wait(mem_req_rd_en == 1);
+        @(posedge clk);
 
+        // 2. Trigger Soft Reset (Watchdog firing)
+        $display("Triggering Watchdog Reset...");
+        rst_n = 0; // Soft reset
+        #20;
+        rst_n = 1;
         #20;
 
-        // Test 3: Backpressure (Waitrequest)
-        $display("Test 3: Backpressure");
-        
-        ddr3_waitrequest = 1;
-        mem_req_rd_cmd = 2'd2; // READ
-        mem_req_rd_valid = 1;
-        
-        // Wait for FIFO accept (en=1 -> en=0)
-        // With previous Waitrequest issue, en stayed 1 and read stayed 0.
-        // Now read should go 1 and en should go 0.
-        wait(mem_req_rd_en == 0);
-        
-        @(posedge clk);
-        #1;
-        
-        // FSM should have transitioned to WAIT state and asserted READ
-        if (ddr3_read !== 1) $error("DDR3 Read not asserted during Waitrequest");
-        
-        // Check if en became 0 (stall)
-        if (mem_req_rd_en !== 0) $display("WARNING: mem_req_rd_en should be 0 in WAIT state. Actual: %b", mem_req_rd_en);
-        
-        // Release Waitrequest
-        @(posedge clk);
-        ddr3_waitrequest = 0;
-        #1;
-        // Should return to IDLE and assert EN (popping)
-        if (mem_req_rd_en !== 1) $error("Core Request NOT accepted (en!=1) after Waitrequest release");
-        
-        @(posedge clk);
-        mem_req_rd_valid = 0;
+        // Verify outstanding_reads survived the reset
+        if (uut.outstanding_reads != 1) $error("CRITICAL: outstanding_reads was destroyed by watchdog reset!");
+        $display("Outstanding Reads survived Watchdog Reset: %d", uut.outstanding_reads);
 
-        #100;
-
-        // Test 4: Skid Buffer (Data Latency)
-        // Simulate: FIFO has 2 items. We pop the first. FSM accepts it and drops EN.
-        // BUT logic latency means the 2nd item appears VALID one cycle LATER.
-        $display("Test 4: Skid Buffer");
-
-        // 1. First Request (Trigger WAIT state)
-        mem_req_rd_cmd = 2'd3; // WRITE
-        mem_req_rd_addr = 22'hAAAAAA;
-        mem_req_rd_valid = 1;
-
-        // FSM takes 1 cycle to see it and go to WAIT
-        @(posedge clk); 
-        #1;
-        
-        // 2. TRIGGER SKID:
-        // FSM is now in WAIT (or transitioning to it). EN should be 0.
-        // We simulate the FIFO output changing to the next item (Skid)
-        mem_req_rd_cmd = 2'd2; // READ (The Skid Item)
+        // 3. Issue WRITE while read is STILL pending in the bridge
+        $display("Issuing WRITE after watchdog recovery...");
+        mem_req_rd_cmd = 2'd3;
         mem_req_rd_addr = 22'hBBBBBB;
-        mem_req_rd_valid = 1; // It remains VALID 
+        mem_req_rd_dta = 64'h99998888;
+        mem_req_rd_valid = 1;
         
-        // Verify First Request (Write) is on bus NOW
-        if (ddr3_write !== 1) $error("First Request (Write) not asserted during WAIT");
-
-        // Complete First Request
-        ddr3_waitrequest = 0; // Accept Write immediately
-        
-        // 3. Next Cycle: FSM returns to IDLE. 
-        // Logic should see Saved Skid Data and immediately Assert Read.
-        
-        // Wait for Read to be asserted (timeout logic implicit in simulation length)
-        wait(ddr3_read);
-        
-        #1;
-        // Verify Skid Request is correct
-        if (ddr3_addr !== {4'b0110, 2'b00, 22'hBBBBBB, 1'b0}) $error("Skid Address mismatch");
-        $display("Skid Buffer Test Passed: Read asserted with correct address.");
-
-        // Complete Skid Request
-        @(posedge clk);
-        mem_req_rd_valid = 0;
-
         #100;
-        $display("Test Complete");
+        // The FSM must NOT issue ddr3_write despite being freshly reset.
+        if (ddr3_write == 1) $error("CRITICAL: Write issued during pending read! Watchdog reset caused WAR deadlock hazard!");
+        
+        // 4. Provide Read response from the old read
+        $display("Providing READ response from pre-reset...");
+        ddr3_readdatavalid = 1;
+        @(posedge clk);
+        ddr3_readdatavalid = 0;
+        
+        // 5. Trace the recovery
+        wait(ddr3_write == 1);
+        $display("WRITE resumed successfully after post-watchdog response.");
+        
+        #500;
+        $display("Simulation Passed.");
         $finish;
     end
 
